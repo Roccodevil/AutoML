@@ -1,0 +1,23 @@
+# requirements.txt
+
+# GUI Framework
+customtkinter
+Pillow  # <-- ADD THIS LINE to handle images
+
+# Core Data Science & ML
+pandas
+scikit-learn
+seaborn
+matplotlib
+joblib
+
+# AutoML Framework
+h2o
+
+# LangChain & LLM API Connectors
+langchain
+langchain-core
+langchain-groq
+
+# Environment Variable Management
+python-dotenv
