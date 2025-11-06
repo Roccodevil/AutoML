@@ -2,7 +2,7 @@
 
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import JsonOutputParser
-from core.llm_services import llm_fast_api  # <-- This is now the Groq fast model
+from core.llm_services import llm_fast_api 
 import pandas as pd
 
 class AnalysisAgent: 

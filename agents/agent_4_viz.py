@@ -1,10 +1,10 @@
 # agents/agent_4_viz.py
 
-import matplotlib # <-- ADD THIS LINE
-matplotlib.use('Agg') # <-- ADD THIS LINE (Use non-interactive backend)
+import matplotlib 
+matplotlib.use('Agg')
 
 import seaborn as sns
-import matplotlib.pyplot as plt # <-- Keep this import here
+import matplotlib.pyplot as plt 
 import os
 import io
 from PIL import Image
@@ -15,7 +15,7 @@ class VizAgent:
         print("-> Agent 4: Generating data visualizations...")
         df = state['cleaned_df']
         charts_dir = os.path.join(state['results_dir'], "charts")
-        chart_images = [] # To store images for the GUI
+        chart_images = [] 
 
         try:
             # 1. Correlation Heatmap (for numeric features)

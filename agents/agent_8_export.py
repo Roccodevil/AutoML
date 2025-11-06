@@ -11,7 +11,6 @@ class ExportAgent:
         models_dir = os.path.join(state['results_dir'], "models")
         
         # H2O models are best saved as MOJO (Model Object, Optimized)
-        # or as a binary file
         try:
             # MOJO is generally more flexible for production
             model_path = model.download_mojo(path=models_dir, get_genmodel_jar=False)

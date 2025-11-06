@@ -8,7 +8,7 @@ import sys
 import time
 import os
 from pipeline.orchestrator import run_full_pipeline
-from PIL import Image # <-- NEW: Import Pillow
+from PIL import Image 
 
 class Redirector:
     """Redirects print statements to a tkinter widget."""

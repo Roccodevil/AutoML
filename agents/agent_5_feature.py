@@ -31,8 +31,8 @@ class FeatureAgent:
 
     def run(self, state):
         print("-> Agent 5: Engineering new features with LLM suggestions...")
-        cleaned_df = state['cleaned_df'] # This is the df we need to ADD features to
-        raw_df = state['raw_df'].copy() # Use a copy of raw_df to GENERATE features safely
+        cleaned_df = state['cleaned_df'] 
+        raw_df = state['raw_df'].copy() 
         analysis = state['analysis']
         target = analysis['target_variable']
 

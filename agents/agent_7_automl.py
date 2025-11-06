@@ -51,5 +51,5 @@ class AutoMLAgent:
         best_model_id = best_model.model_id
         
         state['best_model'] = best_model
-        state['best_model_id'] = best_model_id # <-- NEW: Add ID for the report
+        state['best_model_id'] = best_model_id 
         return state

@@ -3,7 +3,6 @@
 import os
 import h2o
 
-# --- Imports with valid module names ---
 from agents.agent_1_data import DataAgent
 from agents.agent_2_analysis import AnalysisAgent
 from agents.agent_3_preprocess import PreprocessAgent
@@ -27,7 +26,6 @@ def run_full_pipeline(state: dict):
     os.makedirs(os.path.join(results_dir, "charts"), exist_ok=True)
     os.makedirs(os.path.join(results_dir, "models"), exist_ok=True)
     
-    # --- Agent Initializations (Class names are unchanged) ---
     agent1 = DataAgent()
     agent2 = AnalysisAgent()
     agent3 = PreprocessAgent()
@@ -70,11 +68,11 @@ def run_full_pipeline(state: dict):
         callback("Step 8: Export Agent is saving the final model...", 100)
         state = agent8.run(state)
 
-        # --- NEW: Clearer final message ---
+        # final message 
         final_message = f"✅ Pipeline complete!\nBest Model: {state['best_model_id']}\nSaved to: {state['final_model_path']}"
         state['final_message'] = final_message
         
-        return state # Return the full state
+        return state 
 
     except Exception as e:
         print(f"PIPELINE FAILED: {e}")
@@ -84,5 +82,5 @@ def run_full_pipeline(state: dict):
     finally:
         # Shutdown H2O cluster
         if h2o.connection() is not None:
-            h2o.shutdown(prompt=False) # Shutdown without asking
+            h2o.shutdown(prompt=False)
             print("\nShut down H2O cluster.")
