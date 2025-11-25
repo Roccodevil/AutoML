@@ -1,7 +1,0 @@
-# run_gui.py
-
-from gui.app import App
-
-if __name__ == "__main__":
-    app = App()
-    app.mainloop()

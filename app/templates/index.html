@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>AutoML Workspace v2.0</title>
+    <link href="https://unpkg.com/reactflow@11.11.4/dist/style.css" rel="stylesheet" />
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; margin: 0; background-color: #2D2D2D; color: white; overflow: hidden; }
+        .app-container { display: flex; height: 100vh; }
+        .sidebar { width: 300px; background: #333; border-right: 1px solid #444; display: flex; flex-direction: column; }
+        .sidebar-header { padding: 15px; border-bottom: 1px solid #444; background: #252525; }
+        .sidebar-content { padding: 15px; flex-grow: 1; overflow-y: auto; }
+        .node-palette-item { padding: 10px; margin-bottom: 8px; background: #444; border: 1px solid #555; border-radius: 4px; cursor: grab; }
+        .config-group { margin-bottom: 15px; }
+        .config-group label { display: block; margin-bottom: 5px; font-size: 13px; color: #aaa; }
+        .config-input, .config-select { width: 100%; padding: 8px; background: #222; border: 1px solid #555; color: white; border-radius: 4px; box-sizing: border-box; }
+        textarea.config-input { resize: vertical; min-height: 80px; }
+        .workspace { flex-grow: 1; position: relative; }
+        .react-flow__node { background: #444; color: white; border: 1px solid #777; border-radius: 5px; padding: 10px; }
+        .react-flow__node-agent_1_data { border-color: #007bff; background: #1a2e40; }
+        .react-flow__node-agent_8_export { border-color: #28a745; background: #1a4023; }
+        .top-bar { position: absolute; top: 15px; right: 20px; z-index: 10; display: flex; gap: 10px; }
+        .btn { padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; color: white; }
+        .btn-run { background: #28a745; }
+        .btn-save { background: #007bff; }
+        .btn-step { background: #e67e22; width: 100%; margin-top: 10px; }
+        .results-overlay { position: absolute; top: 60px; right: 20px; bottom: 20px; width: 400px; background: #333; border: 1px solid #555; border-radius: 8px; display: flex; flex-direction: column; z-index: 20; }
+        .results-content { flex-grow: 1; overflow-y: auto; padding: 15px; }
+        .search-result-item { padding: 10px; border-bottom: 1px solid #444; cursor: pointer; }
+        .search-result-item:hover { background: #444; }
+        .result-image { width: 100%; margin-bottom: 10px; border: 1px solid #555; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/reactflow@11.11.4/dist/umd/index.js"></script>
+    <script>
+        window.PROJECT_ID = "{{ project._id }}";
+        window.initialGraph = {{ project.graph_json | safe }};
+    </script>
+    {% raw %}
+    <script type="text/babel">
+        const { ReactFlow, useNodesState, useEdgesState, addEdge, Background, Controls, MiniMap } = window.ReactFlow;
+        const { useState, useCallback, useRef } = React;
+
+        const nodeTypesList = [
+            { type: 'agent_1_data', label: '1. Data Acquisition' },
+            { type: 'agent_2_analysis', label: '2. Problem Analysis' },
+            { type: 'agent_3_preprocess', label: '3. Preprocess' },
+            { type: 'agent_4_viz', label: '4. Visualize' },
+            { type: 'agent_5_feature', label: '5. Feature Eng.' },
+            { type: 'agent_6_staging', label: '6. Stage Data' },
+            { type: 'agent_7_automl', label: '7. Train (H2O)' },
+            { type: 'agent_8_export', label: '8. Export Report' },
+        ];
+
+        function NodeEditor() {
+            const [nodes, setNodes, onNodesChange] = useNodesState(window.initialGraph.nodes || []);
+            const [edges, setEdges, onEdgesChange] = useEdgesState(window.initialGraph.edges || []);
+            const [selectedNode, setSelectedNode] = useState(null);
+            const [isRunning, setIsRunning] = useState(false);
+            const [pipelineResults, setPipelineResults] = useState(null);
+            const [searchResults, setSearchResults] = useState(null);
+            
+            const [acqMode, setAcqMode] = useState("upload");
+            const [problemDesc, setProblemDesc] = useState("Predict customer churn");
+            const [selectedFile, setSelectedFile] = useState(null);
+            const [searchQuery, setSearchQuery] = useState("");
+            const [genDesc, setGenDesc] = useState("");
+            const reactFlowWrapper = useRef(null);
+
+            const onConnect = useCallback((params) => setEdges((eds) => addEdge(params, eds)), [setEdges]);
+            const onDragOver = useCallback((event) => { event.preventDefault(); event.dataTransfer.dropEffect = 'move'; }, []);
+            const onDrop = useCallback((event) => {
+                event.preventDefault();
+                const type = event.dataTransfer.getData('application/reactflow');
+                const label = event.dataTransfer.getData('application/reactflow/label');
+                if (!type) return;
+                const position = { x: event.clientX - reactFlowWrapper.current.getBoundingClientRect().left - 75, y: event.clientY - reactFlowWrapper.current.getBoundingClientRect().top - 20 };
+                setNodes((nds) => nds.concat({ id: `node_${+new Date()}`, type, position, data: { label } }));
+            }, [reactFlowWrapper, setNodes]);
+            const onNodeClick = useCallback((event, node) => { setSelectedNode(node); }, []);
+            const onSave = useCallback(() => {
+                fetch('/api/save_graph', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ project_id: window.PROJECT_ID, graph_json: JSON.stringify({ nodes, edges }) }) })
+                .then(res => res.json()).then(data => alert(data.message));
+            }, [nodes, edges]);
+
+            const onRun = useCallback((targetNodeId = null) => {
+                if (acqMode === 'upload' && !selectedFile && !targetNodeId) { alert("Please select a CSV file."); return; }
+                setIsRunning(true); setPipelineResults(null); setSearchResults(null);
+
+                const formData = new FormData();
+                formData.append('acquisition_mode', acqMode);
+                formData.append('problem_description', problemDesc);
+                formData.append('project_id', window.PROJECT_ID);
+                formData.append('graph_json', JSON.stringify({ nodes, edges }));
+                if(targetNodeId) formData.append('target_node_id', targetNodeId);
+
+                if (acqMode === 'upload' && selectedFile) formData.append('file', selectedFile);
+                if (acqMode === 'search') formData.append('search_query', searchQuery);
+                if (acqMode === 'generate') formData.append('gen_description', genDesc);
+
+                fetch('/api/run_pipeline', { method: 'POST', body: formData })
+                .then(res => res.json()).then(data => {
+                    setIsRunning(false);
+                    if(data.status === 'error') alert(`Error: ${data.message}`);
+                    else if (data.search_results) setSearchResults(data.search_results);
+                    else setPipelineResults(data);
+                }).catch(err => { setIsRunning(false); alert("Network error."); });
+            }, [nodes, edges, acqMode, selectedFile, problemDesc, searchQuery, genDesc]);
+
+            const onSelectSearchResult = (result) => {
+                setSearchResults(null); setIsRunning(true);
+                const formData = new FormData();
+                formData.append('acquisition_mode', 'download_selected');
+                formData.append('source', result.source);
+                formData.append('dataset_id', result.id);
+                formData.append('problem_description', problemDesc);
+                formData.append('project_id', window.PROJECT_ID);
+                formData.append('graph_json', JSON.stringify({ nodes, edges }));
+
+                fetch('/api/run_pipeline', { method: 'POST', body: formData })
+                .then(res => res.json()).then(data => {
+                    setIsRunning(false);
+                    if(data.status === 'error') alert(`Error: ${data.message}`);
+                    else setPipelineResults(data);
+                }).catch(err => { setIsRunning(false); alert("Download error."); });
+            };
+
+            const renderSidebarContent = () => {
+                if (selectedNode && selectedNode.type === 'agent_1_data') {
+                    return (
+                        <div className="config-panel">
+                            <h3>Data Config</h3>
+                            <div className="config-group">
+                                <label>Mode</label>
+                                <select className="config-select" value={acqMode} onChange={(e) => setAcqMode(e.target.value)}>
+                                    <option value="upload">Upload CSV</option>
+                                    <option value="search">Search Online</option>
+                                    <option value="generate">Generate Synthetic</option>
+                                </select>
+                            </div>
+                            {acqMode === 'upload' && <div className="config-group"><label>File</label><input type="file" accept=".csv" className="config-input" onChange={(e) => setSelectedFile(e.target.files[0])} /></div>}
+                            {acqMode === 'search' && <div className="config-group"><label>Query</label><input type="text" className="config-input" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} /></div>}
+                            {acqMode === 'generate' && <div className="config-group"><label>Desc</label><input type="text" className="config-input" value={genDesc} onChange={(e) => setGenDesc(e.target.value)} /></div>}
+                            <div className="config-group"><label>Problem</label><textarea className="config-input" value={problemDesc} onChange={(e) => setProblemDesc(e.target.value)} /></div>
+                            <button className="btn btn-step" onClick={() => onRun(selectedNode.id)}>▶ Run This Step</button>
+                        </div>
+                    );
+                } else if (selectedNode) {
+                    return (
+                        <div className="config-panel">
+                            <h3>{selectedNode.data.label}</h3>
+                            <button className="btn btn-step" onClick={() => onRun(selectedNode.id)}>▶ Run This Step</button>
+                        </div>
+                    );
+                }
+                return (
+                    <>
+                        <h3>Nodes</h3>
+                        {nodeTypesList.map(node => (
+                            <div className="node-palette-item" key={node.type} draggable onDragStart={(e) => { e.dataTransfer.setData('application/reactflow', node.type); e.dataTransfer.setData('application/reactflow/label', node.label); }}>{node.label}</div>
+                        ))}
+                    </>
+                );
+            };
+
+            return (
+                <div className="app-container" ref={reactFlowWrapper}>
+                    <aside className="sidebar">
+                        <div className="sidebar-header">AutoML Workspace</div>
+                        <div className="sidebar-content">
+                            {renderSidebarContent()}
+                            {selectedNode && <button className="btn btn-save" style={{marginTop:'10px', width:'100%'}} onClick={() => setSelectedNode(null)}>Back to Palette</button>}
+                        </div>
+                    </aside>
+                    <main className="workspace" onDragOver={onDragOver} onDrop={onDrop}>
+                        <div className="top-bar">
+                            <button className="btn btn-save" onClick={onSave}>Save Graph</button>
+                            <button className="btn btn-run" onClick={() => onRun(null)} disabled={isRunning}>{isRunning ? "Running..." : "► Run Pipeline"}</button>
+                        </div>
+                        <ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect} onNodeClick={onNodeClick} fitView><Background /><Controls /><MiniMap /></ReactFlow>
+                        {pipelineResults && (
+                            <div className="results-overlay">
+                                <div className="results-header"><h3>Results</h3><button onClick={() => setPipelineResults(null)}>✕</button></div>
+                                <div className="results-content">
+                                    <p><strong>Model:</strong> {pipelineResults.best_model}</p>
+                                    <div className="log-text">{pipelineResults.final_message}</div>
+                                    <h4>Charts</h4>
+                                    {pipelineResults.chart_urls && pipelineResults.chart_urls.map((url, i) => <img key={i} src={url} className="result-image" />)}
+                                </div>
+                            </div>
+                        )}
+                        {searchResults && (
+                            <div className="results-overlay">
+                                <div className="results-header"><h3>Select Dataset</h3><button onClick={() => setSearchResults(null)}>✕</button></div>
+                                <div className="results-content">
+                                    {searchResults.map((res, i) => <div key={i} className="search-result-item" onClick={() => onSelectSearchResult(res)}>{res.display}</div>)}
+                                </div>
+                            </div>
+                        )}
+                    </main>
+                </div>
+            );
+        }
+        ReactDOM.createRoot(document.getElementById('root')).render(<NodeEditor />);
+    </script>
+    {% endraw %}
+</body>
+</html>

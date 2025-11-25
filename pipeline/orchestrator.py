@@ -1,86 +1,95 @@
-# pipeline/orchestrator.py
-
 import os
 import h2o
+from typing import TypedDict, Dict, Any, List
+from langgraph.graph import StateGraph, END
+import pandas as pd
+from app import mongo 
 
-from agents.agent_1_data import DataAgent
-from agents.agent_2_analysis import AnalysisAgent
-from agents.agent_3_preprocess import PreprocessAgent
-from agents.agent_4_viz import VizAgent
-from agents.agent_5_feature import FeatureAgent
-from agents.agent_6_staging import StagingAgent
-from agents.agent_7_automl import AutoMLAgent
-from agents.agent_8_export import ExportAgent
+from pipeline.agents.agent_1_data import DataAgent
+from pipeline.agents.agent_2_analysis import AnalysisAgent
+from pipeline.agents.agent_3_preprocess import PreprocessAgent
+from pipeline.agents.agent_4_viz import VizAgent
+from pipeline.agents.agent_5_feature import FeatureAgent
+from pipeline.agents.agent_6_staging import StagingAgent
+from pipeline.agents.agent_7_automl import AutoMLAgent
+from pipeline.agents.agent_8_export import ExportAgent
 
-def run_full_pipeline(state: dict):
-    """
-    Orchestrates the entire multi-agent AutoML pipeline.
-    
-    The 'state' dict is passed from agent to agent, gathering all data.
-    """
-    
-    callback = state['callback']
-    
-    # Create results directory
-    results_dir = state['results_dir']
+class OptunaAgentPlaceholder:
+    def run(self, state): return state
+
+class AgentState(TypedDict):
+    project_id: str; acquisition_mode: str; acquisition_input: Any; problem_description: str; results_dir: str; final_message: str
+    raw_df: pd.DataFrame; analysis: Dict[str, Any]; cleaned_df: pd.DataFrame; chart_images: List[Any]; featured_df: pd.DataFrame
+    X_train: pd.DataFrame; X_test: pd.DataFrame; y_train: pd.Series; y_test: pd.Series
+    best_model: Any; best_model_id: str; final_model_path: str; leaderboard: Any
+    search_results: List[Dict[str, Any]]; suggest_generate: bool
+
+AGENT_NODE_MAP = {
+    "agent_1_data": DataAgent, "agent_2_analysis": AnalysisAgent, "agent_3_preprocess": PreprocessAgent,
+    "agent_4_viz": VizAgent, "agent_5_feature": FeatureAgent, "agent_6_staging": StagingAgent,
+    "agent_7_automl": AutoMLAgent, "agent_7_optuna": OptunaAgentPlaceholder, "agent_8_export": ExportAgent,
+}
+
+def create_agent_node(agent_class):
+    def agent_node(state: AgentState):
+        print(f"--- EXECUTING {agent_class.__name__} ---")
+        return agent_class().run(state)
+    return agent_node
+
+def build_graph(nodes_from_gui, edges_from_gui):
+    workflow = StateGraph(AgentState)
+    entry_point = ""
+    added_node_ids = set()
+
+    for node in nodes_from_gui:
+        if node['type'] in AGENT_NODE_MAP:
+            workflow.add_node(node['id'], create_agent_node(AGENT_NODE_MAP[node['type']]))
+            added_node_ids.add(node['id'])
+            if node['type'] == "agent_1_data": entry_point = node['id']
+
+    if not entry_point: return None
+    workflow.set_entry_point(entry_point)
+
+    for edge in edges_from_gui:
+        if edge['source'] in added_node_ids and edge['target'] in added_node_ids:
+            if edge['source'] == entry_point:
+                def decide(state):
+                    if state.get("search_results") or state.get("suggest_generate"): return "pause"
+                    if "raw_df" in state and not state['raw_df'].empty: return "continue"
+                    return "error"
+                workflow.add_conditional_edges(entry_point, decide, {"pause": END, "continue": edge['target'], "error": END})
+            else:
+                workflow.add_edge(edge['source'], edge['target'])
+
+    sources = {e['source'] for e in edges_from_gui}
+    for n in added_node_ids:
+        if n not in sources and n != entry_point: workflow.add_edge(n, END)
+
+    return workflow.compile()
+
+def run_pipeline_from_graph(initial_state, graph_layout):
+    try:
+        if h2o.connection() is None: h2o.init(nthreads=-1, max_mem_size="8g")
+    except: h2o.init(nthreads=-1, max_mem_size="8g")
+
+    app_graph = build_graph(graph_layout['nodes'], graph_layout['edges'])
+    if not app_graph: raise ValueError("Invalid Graph")
+
+    results_dir = initial_state['results_dir']
     os.makedirs(os.path.join(results_dir, "charts"), exist_ok=True)
     os.makedirs(os.path.join(results_dir, "models"), exist_ok=True)
+    os.makedirs(os.path.join(results_dir, "downloaded_data"), exist_ok=True)
     
-    agent1 = DataAgent()
-    agent2 = AnalysisAgent()
-    agent3 = PreprocessAgent()
-    agent4 = VizAgent()
-    agent5 = FeatureAgent()
-    agent6 = StagingAgent()
-    agent7 = AutoMLAgent()
-    agent8 = ExportAgent()
-    
+    final_state = {}
     try:
-        # Step 1: Data Acquisition
-        callback("Step 1: Data Acquisition Agent is working...", 10)
-        state = agent1.run(state)
+        for s in app_graph.stream(initial_state):
+            step = list(s.keys())[0]
+            print(f"--- Finished {step} ---")
+            final_state = s.get(step)
+            if final_state.get('search_results') or final_state.get('suggest_generate'): return final_state
         
-        # Step 2: Problem Analysis
-        callback("Step 2: Problem Analysis Agent is working...", 20)
-        state = agent2.run(state)
-        
-        # Step 3: Preprocessing
-        callback("Step 3: Preprocessing Agent is cleaning data...", 35)
-        state = agent3.run(state)
-        
-        # Step 4: Visualization
-        callback("Step 4: Visualization Agent is generating charts...", 50)
-        state = agent4.run(state)
-        
-        # Step 5: Feature Engineering
-        callback("Step 5: Feature Engineering Agent is creating features...", 60)
-        state = agent5.run(state)
-        
-        # Step 6: Data Staging
-        callback("Step 6: Data Staging Agent is splitting data...", 75)
-        state = agent6.run(state)
-        
-        # Step 7: AutoML Training
-        callback("Step 7: AutoML Agent (H2O.ai) is training models...", 90)
-        state = agent7.run(state)
-        
-        # Step 8: Export
-        callback("Step 8: Export Agent is saving the final model...", 100)
-        state = agent8.run(state)
-
-        # final message 
-        final_message = f"✅ Pipeline complete!\nBest Model: {state['best_model_id']}\nSaved to: {state['final_model_path']}"
-        state['final_message'] = final_message
-        
-        return state 
-
+        final_state['final_message'] = f"✅ Pipeline complete!\nModel: {final_state.get('best_model_id', 'N/A')}\nPath: {final_state.get('final_model_path', 'N/A')}"
+        return final_state
     except Exception as e:
         print(f"PIPELINE FAILED: {e}")
-        import traceback
-        traceback.print_exc()
         raise e
-    finally:
-        # Shutdown H2O cluster
-        if h2o.connection() is not None:
-            h2o.shutdown(prompt=False)
-            print("\nShut down H2O cluster.")

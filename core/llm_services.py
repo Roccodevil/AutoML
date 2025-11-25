@@ -4,7 +4,7 @@ import os
 from langchain_groq import ChatGroq
 from dotenv import load_dotenv
 
-load_dotenv()
+load_dotenv(os.path.join(os.path.dirname(__file__), '..', '.env'))
 
 llm_fast_api = ChatGroq(
     model_name="llama-3.1-8b-instant", 
