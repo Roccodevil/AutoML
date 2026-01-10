@@ -1,0 +1,36 @@
+# Flask Web Server & Database
+Flask
+flask-pymongo[srv]  # Use [srv] for Atlas connectivity
+python-dotenv
+gunicorn          # For production deployment
+
+# Core Data Science & ML
+pandas
+scikit-learn
+joblib
+
+# AutoML Framework
+h2o
+optuna
+
+# LangChain, LangGraph & LLM API Connectors
+langchain
+langchain-core
+langchain-groq
+langgraph
+tavily-python
+langchain-community 
+
+# --- Dataset Search Libraries ---
+datasets
+huggingface_hub
+kaggle
+
+# Visualization
+matplotlib
+seaborn
+Pillow
+
+
+dnspython
+certifi

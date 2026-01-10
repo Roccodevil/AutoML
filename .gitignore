@@ -1,0 +1,35 @@
+# --- Python & Venv ---
+__pycache__/
+*.pyc
+venv/
+env/
+.pytest_cache/
+
+# --- Environment Variables (CRITICAL) ---
+.env
+.env.local
+
+# --- Project Data & Results (Do not push to Git) ---
+data/
+results/
+temp_data/
+downloads/
+
+# --- Intermediate & Generated Files ---
+*.csv
+*.zip
+*.pkl
+*.log
+active_data.csv
+
+# --- H2O.ai Logs ---
+h2o_logs/
+h2ologs/
+
+# --- IDE Settings ---
+.vscode/
+.idea/
+
+# --- OS Specific ---
+.DS_Store
+Thumbs.db
