@@ -133,9 +133,9 @@ def run_pipeline_from_graph(initial_state: dict, graph_layout: dict, target_node
     # Ensure H2O is running (Do not shutdown between runs)
     try:
         if h2o.connection() is None:
-            h2o.init(nthreads=-1, max_mem_size="8g")
+            h2o.init(nthreads=-1)#, max_mem_size="8g")
     except:
-        h2o.init(nthreads=-1, max_mem_size="8g")
+        h2o.init(nthreads=-1)#, max_mem_size="8g")
 
     app_graph = build_graph(graph_layout['nodes'], graph_layout['edges'])
     if not app_graph:
