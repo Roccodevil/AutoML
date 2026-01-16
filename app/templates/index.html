@@ -2,13 +2,13 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>AutoML Workspace v3.5</title>
+    <title>AutoML Workspace v5.0 Pro</title>
     <link href="https://unpkg.com/reactflow@11.11.4/dist/style.css" rel="stylesheet" />
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
     <style>
         body { font-family: 'Segoe UI', sans-serif; margin: 0; background-color: #1e1e1e; color: #e0e0e0; overflow: hidden; }
         .app-container { display: flex; height: 100vh; }
-        .sidebar { width: 300px; background: #252526; border-right: 1px solid #333; display: flex; flex-direction: column; z-index: 5; }
+        .sidebar { width: 320px; background: #252526; border-right: 1px solid #333; display: flex; flex-direction: column; z-index: 5; }
         .sidebar-header { padding: 15px; background: #333333; border-bottom: 1px solid #333; font-weight: bold; letter-spacing: 1px; }
         .sidebar-content { padding: 15px; flex-grow: 1; overflow-y: auto; }
         .node-palette-item { padding: 10px; margin-bottom: 8px; background: #333; border: 1px solid #555; border-radius: 4px; cursor: grab; display: flex; align-items: center; gap: 10px; }
@@ -17,11 +17,12 @@
         .config-group label { display: block; margin-bottom: 8px; font-size: 12px; color: #aaa; text-transform: uppercase; }
         .config-input, .config-select { width: 100%; padding: 10px; background: #3c3c3c; border: 1px solid #555; color: white; border-radius: 4px; box-sizing: border-box; outline: none; }
         .config-input:focus { border-color: #007bff; }
-        textarea.config-input { resize: vertical; min-height: 100px; font-family: monospace; }
-        .checkbox-item { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; font-size: 14px; cursor: pointer; }
+        textarea.config-input { resize: vertical; min-height: 80px; font-family: monospace; }
+        .checkbox-item { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; font-size: 13px; cursor: pointer; }
         .workspace { flex-grow: 1; position: relative; background: #1e1e1e; }
         .react-flow__node { background: #333; color: white; border: 1px solid #555; border-radius: 8px; padding: 10px 15px; font-size: 14px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }
         .react-flow__node-agent_1_data { border-left: 5px solid #007bff; }
+        .react-flow__node-agent_3_preprocess { border-left: 5px solid #e91e63; }
         .react-flow__node-agent_7_automl { border-left: 5px solid #ff9800; }
         .react-flow__node-agent_8_export { border-left: 5px solid #28a745; }
         .btn { padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; transition: background 0.2s; color: white; display: flex; align-items: center; justify-content: center; gap: 8px; }
@@ -29,28 +30,18 @@
         .btn-run { background: #28a745; } 
         .btn-save { background: #007bff; } 
         .btn-step { background: #ff9800; width: 100%; margin-top: 15px; } 
-        
         .dl-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 10px; }
-        .btn-dl-option { 
-            background: #333; border: 1px solid #555; padding: 15px; 
-            text-decoration: none; color: white; border-radius: 6px; 
-            text-align: center; display: flex; flex-direction: column; align-items: center; gap: 5px;
-            transition: background 0.2s;
-        } 
+        .btn-dl-option { background: #333; border: 1px solid #555; padding: 15px; text-decoration: none; color: white; border-radius: 6px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 5px; transition: background 0.2s; } 
         .btn-dl-option:hover { background: #444; border-color: #007bff; }
         .btn-dl-option i { font-size: 20px; color: #007bff; }
         .btn-dl-option span { font-size: 13px; font-weight: bold; }
         .btn-dl-option small { font-size: 11px; color: #aaa; }
-
         .top-bar { position: absolute; top: 15px; right: 20px; z-index: 10; display: flex; gap: 10px; }
         .results-window { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 900px; height: 85vh; background: #252526; border: 1px solid #444; border-radius: 8px; box-shadow: 0 20px 50px rgba(0,0,0,0.8); z-index: 9999; display: flex; flex-direction: column; resize: both; overflow: hidden; min-width: 400px; min-height: 300px; }
         .window-header { padding: 15px; background: #333; border-bottom: 1px solid #444; display: flex; justify-content: space-between; align-items: center; cursor: move; }
         .window-body { padding: 20px; overflow-y: auto; flex-grow: 1; font-size: 14px; line-height: 1.6; color: #ddd; }
         .window-close { background: none; border: none; color: #aaa; cursor: pointer; font-size: 24px; }
         .result-image { max-width: 100%; border-radius: 4px; border: 1px solid #555; margin-bottom: 10px; }
-        .table { width: 100%; border-collapse: collapse; font-size: 12px; font-family: monospace; margin-bottom: 15px; }
-        .table th, .table td { padding: 8px; border: 1px solid #555; text-align: left; }
-        .table th { background: #444; color: #fff; }
         .result-section { margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid #444; }
         pre.report-text { background: #1a1a1a; padding: 15px; border-radius: 4px; overflow-x: auto; border: 1px solid #444; font-family: 'Consolas', monospace; white-space: pre-wrap; color: #eee; }
         .search-modal { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 500px; height: auto; background: #2d2d2d; border: 1px solid #444; border-radius: 8px; z-index: 2000; display: flex; flex-direction: column; }
@@ -64,218 +55,220 @@
     <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
     <script src="https://unpkg.com/reactflow@11.11.4/dist/umd/index.js"></script>
-    <script>
-        window.PROJECT_ID = "{{ project._id }}";
-        window.initialGraph = {{ project.graph_json | safe }};
-    </script>
+    <script>window.PROJECT_ID = "{{ project._id }}"; window.initialGraph = {{ project.graph_json | safe }};</script>
     {% raw %}
     <script type="text/babel">
         const { ReactFlow, useNodesState, useEdgesState, addEdge, Background, Controls, MiniMap } = window.ReactFlow;
         const { useState, useCallback, useRef, useEffect } = React;
-
         const nodeTypesList = [
-            { type: 'agent_1_data', label: '1. Data Acquisition', icon: 'fa-database' },
-            { type: 'agent_2_analysis', label: '2. Problem Analysis', icon: 'fa-brain' },
-            { type: 'agent_3_preprocess', label: '3. Preprocess', icon: 'fa-filter' },
-            { type: 'agent_4_viz', label: '4. Visualize', icon: 'fa-chart-bar' },
-            { type: 'agent_5_feature', label: '5. Feature Eng.', icon: 'fa-cogs' },
-            { type: 'agent_6_staging', label: '6. Stage Data', icon: 'fa-scissors' },
-            { type: 'agent_7_automl', label: '7. Train (H2O)', icon: 'fa-robot' },
-            { type: 'agent_8_export', label: '8. Export', icon: 'fa-file-export' },
+            { type: 'agent_1_data', label: '1. Data Acquisition', icon: 'fa-database' }, { type: 'agent_2_analysis', label: '2. Problem Analysis', icon: 'fa-brain' },
+            { type: 'agent_3_preprocess', label: '3. Preprocess', icon: 'fa-filter' }, { type: 'agent_4_viz', label: '4. Visualize', icon: 'fa-chart-bar' },
+            { type: 'agent_5_feature', label: '5. Feature Eng.', icon: 'fa-cogs' }, { type: 'agent_6_staging', label: '6. Stage Data', icon: 'fa-scissors' },
+            { type: 'agent_7_automl', label: '7. Train (H2O)', icon: 'fa-robot' }, { type: 'agent_8_export', label: '8. Export', icon: 'fa-file-export' },
         ];
-
+        
         const DraggableWindow = ({ title, content, downloads, onClose }) => {
-            const [position, setPosition] = useState(null); 
-            const [isDragging, setIsDragging] = useState(false);
-            const dragStart = useRef({ x: 0, y: 0 });
-            const windowRef = useRef(null);
-
-            const handleMouseDown = (e) => { 
-                setIsDragging(true); 
-                const rect = windowRef.current.getBoundingClientRect();
-                dragStart.current = { x: e.clientX - rect.left, y: e.clientY - rect.top };
-            };
-            
-            useEffect(() => {
-                const handleMouseMove = (e) => { if (isDragging) setPosition({ x: e.clientX - dragStart.current.x, y: e.clientY - dragStart.current.y }); };
-                const handleMouseUp = () => setIsDragging(false);
-                if (isDragging) { document.addEventListener('mousemove', handleMouseMove); document.addEventListener('mouseup', handleMouseUp); }
-                return () => { document.removeEventListener('mousemove', handleMouseMove); document.removeEventListener('mouseup', handleMouseUp); };
-            }, [isDragging]);
-
+            const [position, setPosition] = useState(null); const [isDragging, setIsDragging] = useState(false); const dragStart = useRef({ x: 0, y: 0 }); const windowRef = useRef(null);
+            const handleMouseDown = (e) => { setIsDragging(true); const rect = windowRef.current.getBoundingClientRect(); dragStart.current = { x: e.clientX - rect.left, y: e.clientY - rect.top }; };
+            useEffect(() => { const handleMouseMove = (e) => { if (isDragging) setPosition({ x: e.clientX - dragStart.current.x, y: e.clientY - dragStart.current.y }); }; const handleMouseUp = () => setIsDragging(false); if (isDragging) { document.addEventListener('mousemove', handleMouseMove); document.addEventListener('mouseup', handleMouseUp); } return () => { document.removeEventListener('mousemove', handleMouseMove); document.removeEventListener('mouseup', handleMouseUp); }; }, [isDragging]);
             const style = position ? { left: position.x, top: position.y, transform: 'none' } : {};
-
-            return (
-                <div ref={windowRef} className="results-window" style={style}>
-                    <div className="window-header" onMouseDown={handleMouseDown}>
-                        <div className="window-title"><i className="fas fa-poll"></i> {title}</div>
-                        <button className="window-close" onClick={onClose}>×</button>
-                    </div>
-                    <div className="window-body">
-                        {content}
-                        {downloads && downloads.length > 0 && (
-                            <div className="result-section" style={{borderTop:'1px solid #444', paddingTop:'15px'}}>
-                                <h4>Download Center</h4>
-                                <div className="dl-grid">
-                                    {downloads.map((d, i) => (
-                                        <a key={i} href={`${d.url}?t=${new Date().getTime()}`} className="btn-dl-option" download>
-                                            <i className={`fas ${d.icon || 'fa-download'}`}></i> 
-                                            <span>{d.label}</span>
-                                            {d.desc && <small>{d.desc}</small>}
-                                        </a>
-                                    ))}
-                                </div>
-                            </div>
-                        )}
-                    </div>
-                </div>
-            );
+            return (<div ref={windowRef} className="results-window" style={style}><div className="window-header" onMouseDown={handleMouseDown}><div className="window-title"><i className="fas fa-poll"></i> {title}</div><button className="window-close" onClick={onClose}>×</button></div><div className="window-body">{content}{downloads && downloads.length > 0 && (<div className="result-section" style={{borderTop:'1px solid #444', paddingTop:'15px'}}><h4>Download Center</h4><div className="dl-grid">{downloads.map((d, i) => (<a key={i} href={`${d.url}?t=${new Date().getTime()}`} className="btn-dl-option" download><i className={`fas ${d.icon || 'fa-download'}`}></i> <span>{d.label}</span>{d.desc && <small>{d.desc}</small>}</a>))}</div></div>)}</div></div>);
         };
 
         function NodeEditor() {
-            const [nodes, setNodes, onNodesChange] = useNodesState(window.initialGraph.nodes || []);
-            const [edges, setEdges, onEdgesChange] = useEdgesState(window.initialGraph.edges || []);
-            const [selectedNode, setSelectedNode] = useState(null);
-            const [isRunning, setIsRunning] = useState(false);
-            const [resultWindow, setResultWindow] = useState(null);
-            const [searchResults, setSearchResults] = useState(null);
-            const [nodeConfigs, setNodeConfigs] = useState({});
-            
-            const [acqMode, setAcqMode] = useState("upload");
-            const [problemDesc, setProblemDesc] = useState("Predict customer churn");
-            const [selectedFile, setSelectedFile] = useState(null);
-            const [searchQuery, setSearchQuery] = useState("");
-            const [genDesc, setGenDesc] = useState("");
-            const reactFlowWrapper = useRef(null);
+            const [nodes, setNodes, onNodesChange] = useNodesState(window.initialGraph.nodes || []); const [edges, setEdges, onEdgesChange] = useEdgesState(window.initialGraph.edges || []); const [selectedNode, setSelectedNode] = useState(null); const [isRunning, setIsRunning] = useState(false); const [resultWindow, setResultWindow] = useState(null); const [searchResults, setSearchResults] = useState(null); const [nodeConfigs, setNodeConfigs] = useState({});
+            const [acqMode, setAcqMode] = useState("upload"); const [problemDesc, setProblemDesc] = useState("Predict customer churn"); const [selectedFile, setSelectedFile] = useState(null); const [searchQuery, setSearchQuery] = useState(""); const [genDesc, setGenDesc] = useState(""); const reactFlowWrapper = useRef(null);
+            const updateConfig = (type, key, val) => setNodeConfigs(p => ({...p, [type]: {...(p[type] || {}), [key]: val}})); const getConfig = (type) => nodeConfigs[type] || {};
+            const onConnect = useCallback((p) => setEdges((e) => addEdge(p, e)), [setEdges]); const onDragOver = useCallback((e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }, []); const onDrop = useCallback((e) => { e.preventDefault(); const type = e.dataTransfer.getData('application/reactflow'); const label = e.dataTransfer.getData('application/reactflow/label'); if(type) setNodes(ns => ns.concat({ id: `node_${+new Date()}`, type, position: {x: e.clientX-350, y: e.clientY-50}, data: { label } })); }, [reactFlowWrapper, setNodes]); const onNodeClick = useCallback((e, n) => setSelectedNode(n), []); const onSave = useCallback(() => { fetch('/api/save_graph', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ project_id: window.PROJECT_ID, graph_json: JSON.stringify({ nodes, edges }) }) }).then(res => res.json()).then(data => alert(data.message)); }, [nodes, edges]);
 
-            const updateConfig = (type, key, val) => setNodeConfigs(p => ({...p, [type]: {...(p[type] || {}), [key]: val}}));
-            const getConfig = (type) => nodeConfigs[type] || {};
-
-            const onConnect = useCallback((p) => setEdges((e) => addEdge(p, e)), [setEdges]);
-            const onDragOver = useCallback((e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }, []);
-            const onDrop = useCallback((e) => { e.preventDefault(); const type = e.dataTransfer.getData('application/reactflow'); const label = e.dataTransfer.getData('application/reactflow/label'); if(type) setNodes(ns => ns.concat({ id: `node_${+new Date()}`, type, position: {x: e.clientX-350, y: e.clientY-50}, data: { label } })); }, [reactFlowWrapper, setNodes]);
-            const onNodeClick = useCallback((e, n) => setSelectedNode(n), []);
-            const onSave = useCallback(() => { fetch('/api/save_graph', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ project_id: window.PROJECT_ID, graph_json: JSON.stringify({ nodes, edges }) }) }).then(res => res.json()).then(data => alert(data.message)); }, [nodes, edges]);
-
+            // --- FAIL-SAFE DOWNLOAD LOGIC ---
             const handlePipelineSuccess = (data, targetNodeId = null) => {
-                let title = "Pipeline Results";
-                let content = null;
-                let downloads = [];
+                let title = "Pipeline Results"; let content = null; let downloads = [];
                 
+                // --- Helper to add charts if they exist ---
+                const addChartsButton = () => {
+                    // Force button if ANY charts exist, ignoring backend flag quirks
+                    if(data.dl_charts || (data.chart_urls && data.chart_urls.length > 0)) {
+                        downloads.push({
+                            label: "Download Charts", 
+                            url: "/api/download/charts.zip", 
+                            icon: "fa-images", 
+                            desc: `${data.chart_urls ? data.chart_urls.length : 'All'} Charts`
+                        });
+                    }
+                };
+
                 if (targetNodeId) {
-                    // --- PARTIAL STEP RESULTS ---
                     const nodeType = nodes.find(n => n.id === targetNodeId)?.type;
-                    if (nodeType === 'agent_1_data' || nodeType === 'agent_3_preprocess' || nodeType === 'agent_5_feature') {
-                        title = `Data Preview (${data.data_shape})`;
-                        content = (<div><p>Showing processed data.</p>{data.data_preview_html && <div className="table-responsive" dangerouslySetInnerHTML={{__html: data.data_preview_html}} />}</div>);
-                        downloads.push({label: "Download CSV", url: "/api/download/data.csv", icon: "fa-file-csv", desc: "Current Data"});
-                    } else if (nodeType === 'agent_2_analysis') {
-                        title = "Problem Analysis"; content = (<div><h3>AI Assessment</h3><p><strong>Type:</strong> {data.analysis?.problem_type}</p><p><strong>Target:</strong> {data.analysis?.target_variable}</p><div style={{background:'#333', padding:'10px', borderRadius:'4px'}}><strong>Reasoning:</strong><p>{data.analysis?.reasoning_detailed}</p></div></div>);
-                    } else if (nodeType === 'agent_4_viz') {
-                        title = "Visualizations"; content = (<div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px'}}>{data.chart_urls.map((url, i) => (<div key={i} style={{textAlign:'center'}}><img src={url} className="result-image" /><a href={url} download className="btn-dl">Download</a></div>))}</div>);
-                        // Also show bundle download if in Viz step
-                        if (data.chart_urls.length > 0) downloads.push({label: "All Charts", url: "/api/download/charts.zip", icon: "fa-images", desc: "Zip Bundle"});
-                    } else if (nodeType === 'agent_7_automl') {
-                        title = "AutoML Leaderboard"; content = data.leaderboard_html ? <div dangerouslySetInnerHTML={{__html: data.leaderboard_html}} /> : <p>No leaderboard available.</p>;
-                    } else if (nodeType === 'agent_8_export') {
-                        title = "Export Options";
-                        content = (<div><div style={{background:'#1e4426', padding:'15px', borderRadius:'5px', border:'1px solid #28a745', marginBottom:'20px'}}><h3 style={{marginTop:0}}>Ready</h3><p>Model: {data.best_model}</p></div><pre class="report-text">{data.final_message}</pre></div>);
-                        // Force all downloads here too
-                        if(data.dl_app) downloads.push({label: "Interactive App", url: data.dl_app, icon: "fa-rocket", desc: "Run Offline"});
-                        if(data.dl_model) downloads.push({label: "Model File", url: data.dl_model, icon: "fa-cube", desc: "Raw Model"});
-                        downloads.push({label: "Report", url: "/results/final_report.txt", icon: "fa-file-alt", desc: "Summary"});
+                    if (nodeType === 'agent_1_data') { 
+                        title = `Data Preview (${data.data_shape})`; 
+                        content = (<div><p>Showing processed data.</p>{data.data_preview_html && <div className="table-responsive" dangerouslySetInnerHTML={{__html: data.data_preview_html}} />}</div>); 
+                        downloads.push({label: "Download CSV", url: "/api/download/data.csv", icon: "fa-file-csv", desc: "Current Data"}); 
+                    }
+                    else if (nodeType === 'agent_3_preprocess' || nodeType === 'agent_5_feature') { 
+                        title = `Processed Data (${data.data_shape})`; 
+                        content = (<div><p>Transformed Data.</p>{data.analysis?.preprocessing_log && <div style={{background:'#333', padding:'10px', marginBottom:'10px', borderRadius:'4px', fontSize:'12px', fontFamily:'monospace'}}><strong>Strategy Used:</strong><br/>{JSON.stringify(data.analysis.preprocessing_log, null, 2)}</div>}{data.data_preview_html && <div className="table-responsive" dangerouslySetInnerHTML={{__html: data.data_preview_html}} />}</div>); 
+                        downloads.push({label: "Download CSV", url: "/api/download/data.csv", icon: "fa-file-csv", desc: "Processed"}); 
+                    }
+                    else if (nodeType === 'agent_2_analysis') { 
+                        title = "Problem Analysis"; 
+                        content = (<div><h3>AI Assessment</h3><p><strong>Type:</strong> {data.analysis?.problem_type}</p><p><strong>Target:</strong> {data.analysis?.target_variable}</p><div style={{background:'#333', padding:'10px', borderRadius:'4px'}}><strong>Reasoning:</strong><p>{data.analysis?.reasoning_detailed}</p></div></div>); 
+                    }
+                    else if (nodeType === 'agent_4_viz') { 
+                        title = "Visualizations"; 
+                        content = (<div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px'}}>{data.chart_urls.map((url, i) => (<div key={i} style={{textAlign:'center'}}><img src={url} className="result-image" /><a href={url} download className="btn-dl">Download</a></div>))}</div>); 
+                        addChartsButton();
+                    }
+                    else if (nodeType === 'agent_7_automl') { 
+                        title = "AutoML Leaderboard"; 
+                        content = data.leaderboard_html ? <div dangerouslySetInnerHTML={{__html: data.leaderboard_html}} /> : <p>No leaderboard available.</p>; 
+                    }
+                    else if (nodeType === 'agent_8_export') { 
+                        title = "Export Options"; 
+                        content = (<div><div style={{background:'#1e4426', padding:'15px', borderRadius:'5px', border:'1px solid #28a745', marginBottom:'20px'}}><h3 style={{marginTop:0}}>Ready</h3><p>Model: {data.best_model}</p></div><pre class="report-text">{data.final_message}</pre></div>); 
+                        
+                        if(data.dl_app) downloads.push({label: "Interactive App", url: data.dl_app, icon: "fa-rocket", desc: "Zip"}); 
+                        if(data.dl_model) downloads.push({label: "Model File", url: data.dl_model, icon: "fa-cube", desc: "Raw Model"}); 
+                        addChartsButton(); // Force add charts here too
+                        downloads.push({label: "Report", url: "/results/final_report.txt", icon: "fa-file-alt", desc: "Summary"}); 
                     }
                 } else {
-                    // --- FULL PIPELINE RUN ---
-                    title = "Pipeline Complete";
-                    content = (
-                        <div>
-                            <div className="result-section" style={{background:'#1e4426', padding:'15px', borderRadius:'5px', border:'1px solid #28a745'}}>
-                                <h3 style={{marginTop:0}}><i className="fas fa-check-circle"></i> Success</h3>
-                                <p><strong>Best Model:</strong> {data.best_model}</p>
-                            </div>
-                            {data.leaderboard_html && (<div className="result-section"><h4>Leaderboard</h4><div dangerouslySetInnerHTML={{__html: data.leaderboard_html}} style={{maxHeight:'200px', overflowY:'auto'}} /></div>)}
-                            {data.chart_urls && data.chart_urls.length > 0 && (<div className="result-section"><h4>Visualizations</h4><div style={{display:'flex', gap:'10px', overflowX:'auto'}}>{data.chart_urls.slice(0, 3).map((url, i) => (<img key={i} src={url} className="result-image" style={{maxHeight:'150px', objectFit:'cover'}} />))}</div></div>)}
-                            <div className="result-section"><h4>Final Report</h4><pre class="report-text">{data.final_message}</pre></div>
-                        </div>
-                    );
+                    // RUN ALL MODE
+                    title = "Pipeline Complete"; 
+                    content = (<div><div className="result-section" style={{background:'#1e4426', padding:'15px', borderRadius:'5px', border:'1px solid #28a745'}}><h3 style={{marginTop:0}}><i className="fas fa-check-circle"></i> Success</h3><p><strong>Best Model:</strong> {data.best_model}</p></div>{data.leaderboard_html && (<div className="result-section"><h4>Leaderboard</h4><div dangerouslySetInnerHTML={{__html: data.leaderboard_html}} style={{maxHeight:'200px', overflowY:'auto'}} /></div>)}{data.chart_urls && data.chart_urls.length > 0 && (<div className="result-section"><h4>Visualizations</h4><div style={{display:'flex', gap:'10px', overflowX:'auto'}}>{data.chart_urls.slice(0, 3).map((url, i) => (<img key={i} src={url} className="result-image" style={{maxHeight:'150px', objectFit:'cover'}} />))}</div></div>)}<div className="result-section"><h4>Final Report</h4><pre class="report-text">{data.final_message}</pre></div></div>);
                     
-                    // --- FORCED DOWNLOAD CENTER (All 5 Options) ---
-                    // 1. App
-                    if (data.dl_app) {
-                        downloads.push({label: "Interactive App", url: data.dl_app, icon: "fa-rocket", desc: "Zip Package"});
-                    }
-                    // 2. Model
-                    if (data.dl_model) {
-                        downloads.push({label: "Model File", url: data.dl_model, icon: "fa-cube", desc: "Raw Model"});
-                    }
-                    // 3. Charts
-                    if (data.dl_charts || (data.chart_urls && data.chart_urls.length > 0)) {
-                        downloads.push({label: "Charts Bundle", url: data.dl_charts || "/api/download/charts.zip", icon: "fa-images", desc: "All Visuals"});
-                    }
-                    // 4. Data (Always)
+                    if (data.dl_app) downloads.push({label: "Interactive App", url: data.dl_app, icon: "fa-rocket", desc: "Zip Package"});
+                    if (data.dl_model) downloads.push({label: "Model File", url: data.dl_model, icon: "fa-cube", desc: "Raw Model"});
+                    
+                    addChartsButton(); // Force add charts here too
+                    
                     downloads.push({label: "Dataset", url: "/api/download/data.csv", icon: "fa-table", desc: "Processed CSV"});
-                    
-                    // 5. Report (Always)
                     downloads.push({label: "Full Report", url: data.dl_report || "/results/final_report.txt", icon: "fa-file-alt", desc: "TXT File"});
                 }
                 setResultWindow({ title, content, downloads });
             };
 
             const onRun = useCallback((targetNodeId = null) => {
-                if (acqMode === 'upload' && !selectedFile && !targetNodeId) { alert("Please select a CSV file in Data Config."); return; }
+                if (acqMode === 'upload' && !selectedFile && !targetNodeId) { alert("Please select a file."); return; }
                 setIsRunning(true); setResultWindow(null); setSearchResults(null);
-                const fd = new FormData();
-                fd.append('acquisition_mode', acqMode); fd.append('problem_description', problemDesc); fd.append('project_id', window.PROJECT_ID); fd.append('graph_json', JSON.stringify({ nodes, edges })); fd.append('node_configs', JSON.stringify(nodeConfigs));
-                if (targetNodeId) fd.append('target_node_id', targetNodeId);
-                if (acqMode === 'upload' && selectedFile) fd.append('file', selectedFile);
-                if (acqMode === 'search') fd.append('search_query', searchQuery);
-                if (acqMode === 'generate') fd.append('gen_description', genDesc);
-                fetch('/api/run_pipeline', { method: 'POST', body: fd }).then(res => res.json()).then(data => {
-                    setIsRunning(false);
-                    if(data.status === 'error') { alert(`Error: ${data.message}`); return; }
-                    if(data.search_results) { setSearchResults(data.search_results); return; }
-                    if(data.suggest_generate) { if(confirm("No search results. Generate?")) { setAcqMode("generate"); } return; }
-                    handlePipelineSuccess(data, targetNodeId);
-                }).catch(e => { setIsRunning(false); alert("Network error"); console.error(e); });
+                const fd = new FormData(); fd.append('acquisition_mode', acqMode); fd.append('problem_description', problemDesc); fd.append('project_id', window.PROJECT_ID); fd.append('graph_json', JSON.stringify({ nodes, edges })); fd.append('node_configs', JSON.stringify(nodeConfigs)); if (targetNodeId) fd.append('target_node_id', targetNodeId);
+                if (acqMode === 'upload' && selectedFile) fd.append('file', selectedFile); if (acqMode === 'search') fd.append('search_query', searchQuery); if (acqMode === 'generate') fd.append('gen_description', genDesc);
+                fetch('/api/run_pipeline', { method: 'POST', body: fd }).then(res => res.json()).then(data => { setIsRunning(false); if(data.status === 'error') { alert(`Error: ${data.message}`); return; } if(data.search_results) { setSearchResults(data.search_results); return; } if(data.suggest_generate) { if(confirm("No results. Generate?")) { setAcqMode("generate"); } return; } handlePipelineSuccess(data, targetNodeId); }).catch(e => { setIsRunning(false); alert("Network error"); console.error(e); });
             }, [nodes, edges, acqMode, selectedFile, problemDesc, searchQuery, genDesc, nodeConfigs]);
 
-            const onSelectSearchResult = (result) => {
-                setSearchResults(null); setIsRunning(true);
-                const fd = new FormData(); fd.append('acquisition_mode', 'download_selected'); fd.append('source', result.source); fd.append('dataset_id', result.id); fd.append('problem_description', problemDesc); fd.append('project_id', window.PROJECT_ID); fd.append('graph_json', JSON.stringify({ nodes, edges })); fd.append('node_configs', JSON.stringify(nodeConfigs));
-                fetch('/api/run_pipeline', { method: 'POST', body: fd }).then(res => res.json()).then(data => {
-                    setIsRunning(false);
-                    if(data.status === 'error') alert(`Error: ${data.message}`);
-                    else handlePipelineSuccess(data, null);
-                }).catch(e => { setIsRunning(false); alert("Download error."); });
-            };
-
-            const renderSidebar = () => {
-                if (!selectedNode) return nodeTypesList.map(n => <div className="node-palette-item" draggable onDragStart={(e) => { e.dataTransfer.setData('application/reactflow', n.type); e.dataTransfer.setData('application/reactflow/label', n.label); }}><i className={`fas ${n.icon}`}></i> {n.label}</div>);
-                const type = selectedNode.type; const cfg = getConfig(type);
+            const onSelectSearchResult = (result) => { setSearchResults(null); setIsRunning(true); const fd = new FormData(); fd.append('acquisition_mode', 'download_selected'); fd.append('source', result.source); fd.append('dataset_id', result.id); fd.append('problem_description', problemDesc); fd.append('project_id', window.PROJECT_ID); fd.append('graph_json', JSON.stringify({ nodes, edges })); fd.append('node_configs', JSON.stringify(nodeConfigs)); fetch('/api/run_pipeline', { method: 'POST', body: fd }).then(res => res.json()).then(data => { setIsRunning(false); if(data.status === 'error') alert(`Error: ${data.message}`); else handlePipelineSuccess(data, null); }).catch(e => { setIsRunning(false); alert("Download error."); }); };
+            
+            const renderSidebar = () => { 
+                if (!selectedNode) return nodeTypesList.map(n => <div className="node-palette-item" draggable onDragStart={(e) => { e.dataTransfer.setData('application/reactflow', n.type); e.dataTransfer.setData('application/reactflow/label', n.label); }}><i className={`fas ${n.icon}`}></i> {n.label}</div>); 
+                const type = selectedNode.type; 
+                const cfg = getConfig(type); 
                 return (
                     <div className="config-panel">
                         <h3>{selectedNode.data.label}</h3>
-                        {type === 'agent_1_data' && (<><div className="config-group"><label>Mode</label><select className="config-select" value={acqMode} onChange={(e) => setAcqMode(e.target.value)}><option value="upload">Upload CSV</option><option value="search">Search Online</option><option value="generate">Generate Synthetic</option></select></div>{acqMode === 'upload' && <div className="config-group"><input type="file" onChange={(e) => setSelectedFile(e.target.files[0])} /></div>}{acqMode === 'search' && <div className="config-group"><input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Query" /></div>}{acqMode === 'generate' && <div className="config-group"><input type="text" value={genDesc} onChange={(e) => setGenDesc(e.target.value)} placeholder="Desc" /></div>}<div className="config-group"><label>Problem</label><textarea className="config-input" value={problemDesc} onChange={(e) => setProblemDesc(e.target.value)} /></div></>)}
-                        {type === 'agent_3_preprocess' && (<div className="config-group"><label>Strategy</label><select className="config-select" value={cfg.mode || 'default'} onChange={(e) => updateConfig(type, 'mode', e.target.value)}><option value="default">Auto</option><option value="custom">Custom</option></select>{cfg.mode === 'custom' && <div style={{marginTop:'10px'}}><div className="checkbox-item"><input type="checkbox" checked={cfg.impute !== false} onChange={(e) => updateConfig(type, 'impute', e.target.checked)} /> Impute</div><div className="checkbox-item"><input type="checkbox" checked={cfg.scale !== false} onChange={(e) => updateConfig(type, 'scale', e.target.checked)} /> Scale</div><div className="checkbox-item"><input type="checkbox" checked={cfg.encode !== false} onChange={(e) => updateConfig(type, 'encode', e.target.checked)} /> Encode</div></div>}</div>)}
-                        {type === 'agent_4_viz' && (<div className="config-group"><label>Complexity</label><select className="config-select" value={cfg.mode || 'default'} onChange={(e) => updateConfig(type, 'mode', e.target.value)}><option value="default">Standard (3 Charts)</option><option value="custom">Detailed (6 Charts)</option></select>{cfg.mode === 'custom' && <div style={{marginTop:'10px'}}><label>What to plot?</label><textarea className="config-input" placeholder="e.g. Heatmap" onChange={(e) => updateConfig(type, 'user_request', e.target.value)} /></div>}</div>)}
+                        {type === 'agent_1_data' && (
+                            <>
+                                <div className="config-group">
+                                    <label>Mode</label>
+                                    <select className="config-select" value={acqMode} onChange={(e) => setAcqMode(e.target.value)}>
+                                        <option value="upload">Upload File</option>
+                                        <option value="search">Search Online</option>
+                                        <option value="generate">Generate Synthetic</option>
+                                    </select>
+                                </div>
+                                {acqMode === 'upload' && <div className="config-group"><label>File (CSV, Excel, PDF, JSON)</label><input type="file" accept=".csv,.xlsx,.xls,.json,.xml,.pdf,.docx,.txt" onChange={(e) => setSelectedFile(e.target.files[0])} className="config-input"/></div>}
+                                {acqMode === 'search' && <div className="config-group"><input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Query (e.g. Titanic)" /></div>}
+                                {acqMode === 'generate' && <div className="config-group"><input type="text" value={genDesc} onChange={(e) => setGenDesc(e.target.value)} placeholder="Describe data..." /></div>}
+                                <div className="config-group"><label>Problem Description</label><textarea className="config-input" value={problemDesc} onChange={(e) => setProblemDesc(e.target.value)} /></div>
+                            </>
+                        )}
+                        
+                        {type === 'agent_3_preprocess' && (
+                            <div className="config-panel">
+                                <div className="config-group">
+                                    <label>Mode</label>
+                                    <select className="config-select" value={cfg.mode || 'default'} onChange={(e) => updateConfig(type, 'mode', e.target.value)}>
+                                        <option value="default">🤖 Auto-Pilot (AI Decides)</option>
+                                        <option value="custom">🛠️ Manual / Pro Mode</option>
+                                    </select>
+                                </div>
+                                <div className="config-group" style={{background: '#2d333b', padding: '10px', borderRadius: '6px', border: '1px solid #4daafc'}}>
+                                    <label style={{color: '#4daafc'}}>💬 Natural Language Instructions</label>
+                                    <textarea className="config-input" style={{height: '80px', fontSize:'13px'}} placeholder="e.g. 'Bin age into 5 groups, extract text from Review column, and remove outliers.'" value={cfg.user_request || ''} onChange={(e) => updateConfig(type, 'user_request', e.target.value)} />
+                                    <small style={{color: '#aaa', fontSize: '10px'}}>The AI will prioritize these instructions.</small>
+                                </div>
+                                {cfg.mode === 'custom' && (
+                                    <div style={{borderTop:'1px solid #444', paddingTop:'15px', marginTop: '15px'}}>
+                                        <h4 style={{marginBottom:'10px', color:'#4daafc'}}>Detailed Controls</h4>
+                                        <div className="config-group">
+                                            <label>Imputation</label>
+                                            <select className="config-select" value={cfg.numeric_impute || 'mean'} onChange={(e) => updateConfig(type, 'numeric_impute', e.target.value)}>
+                                                <option value="mean">Mean</option><option value="median">Median</option><option value="knn">KNN</option><option value="zero">Zero</option>
+                                            </select>
+                                        </div>
+                                        <div className="config-group">
+                                            <label>Scaling</label>
+                                            <select className="config-select" value={cfg.numeric_scale || 'standard'} onChange={(e) => updateConfig(type, 'numeric_scale', e.target.value)}>
+                                                <option value="standard">Standard (Z-Score)</option><option value="minmax">MinMax (0-1)</option><option value="robust">Robust (Outlier Safe)</option><option value="none">None</option>
+                                            </select>
+                                        </div>
+                                        <div className="config-group">
+                                            <label>Transformations</label>
+                                            <select className="config-select" value={cfg.numeric_transform || 'none'} onChange={(e) => updateConfig(type, 'numeric_transform', e.target.value)}>
+                                                <option value="none">None</option><option value="yeo-johnson">Yeo-Johnson</option><option value="quantile">Quantile</option><option value="log">Log</option>
+                                            </select>
+                                        </div>
+                                        <div className="config-group">
+                                            <div className="checkbox-item"><input type="checkbox" checked={cfg.outlier_handling === 'clip'} onChange={(e) => updateConfig(type, 'outlier_handling', e.target.checked ? 'clip' : 'none')} /> Clip Outliers</div>
+                                            <div className="checkbox-item"><input type="checkbox" checked={cfg.dimensionality_reduction === 'pca'} onChange={(e) => updateConfig(type, 'dimensionality_reduction', e.target.checked ? 'pca' : 'none')} /> Apply PCA</div>
+                                            <div className="checkbox-item"><input type="checkbox" checked={cfg.feature_interaction === 'poly'} onChange={(e) => updateConfig(type, 'feature_interaction', e.target.checked ? 'poly' : 'none')} /> Polynomial Features</div>
+                                        </div>
+                                         <h4 style={{marginBottom:'10px', marginTop:'20px', color:'#ff9800'}}>Categorical</h4>
+                                         <div className="config-group">
+                                            <label>Encoding</label>
+                                            <select className="config-select" value={cfg.categorical_encode || 'onehot'} onChange={(e) => updateConfig(type, 'categorical_encode', e.target.value)}>
+                                                <option value="onehot">One-Hot Encoding</option><option value="ordinal">Ordinal Encoding</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {type === 'agent_4_viz' && (
+                            <div className="config-panel">
+                                <div className="config-group">
+                                    <label>Mode</label>
+                                    <select className="config-select" value={cfg.mode || 'default'} onChange={(e) => updateConfig(type, 'mode', e.target.value)}>
+                                        <option value="default">🤖 Auto-Storyteller</option>
+                                        <option value="custom">🎨 Custom Requests</option>
+                                    </select>
+                                </div>
+                                <div className="config-group" style={{background: '#2d333b', padding: '10px', borderRadius: '6px', border: '1px solid #e91e63'}}>
+                                    <label style={{color: '#e91e63'}}>💬 Tell me what to visualize</label>
+                                    <textarea className="config-input" style={{height: '80px', fontSize:'13px'}} placeholder="e.g. 'Plot the correlation matrix', 'Show Age distribution by Gender'" value={cfg.user_request || ''} onChange={(e) => updateConfig(type, 'user_request', e.target.value)} />
+                                </div>
+                                {cfg.mode === 'custom' && (
+                                    <div style={{borderTop:'1px solid #444', paddingTop:'15px', marginTop: '15px'}}>
+                                        <h4 style={{marginBottom:'10px', color:'#e91e63'}}>Manual Overrides</h4>
+                                        <div className="config-group">
+                                            <label>Max Charts</label>
+                                            <select className="config-select" value={cfg.max_charts || '6'} onChange={(e) => updateConfig(type, 'max_charts', e.target.value)}>
+                                                <option value="3">3 (Quick)</option><option value="6">6 (Standard)</option><option value="10">10 (Detailed)</option>
+                                            </select>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                        
                         {type === 'agent_7_automl' && (<div className="config-group"><label>Duration</label><select className="config-select" value={cfg.mode || 'default'} onChange={(e) => updateConfig(type, 'mode', e.target.value)}><option value="default">Fast (1 min)</option><option value="custom">Thorough (5 mins)</option></select></div>)}
+                        
                         <button className="btn btn-step" onClick={() => onRun(selectedNode.id)}>{isRunning ? <i className="fas fa-spinner fa-spin"></i> : <i className="fas fa-play"></i>} Run This Step</button>
                         <button className="btn btn-dl" style={{marginTop:'10px', width:'100%', background:'#333', textAlign:'center'}} onClick={() => setSelectedNode(null)}>Back</button>
                     </div>
-                );
+                ); 
             };
-            return (
-                <div className="app-container" ref={reactFlowWrapper}>
-                    <aside className="sidebar"><div className="sidebar-header">AutoML Studio</div><div className="sidebar-content">{renderSidebar()}</div></aside>
-                    <main className="workspace" onDragOver={(e)=>{e.preventDefault()}} onDrop={(e)=>{e.preventDefault(); const type = e.dataTransfer.getData('application/reactflow'); const label = e.dataTransfer.getData('application/reactflow/label'); if(type) setNodes(ns => ns.concat({ id: `node_${+new Date()}`, type, position: {x: e.clientX-350, y: e.clientY-50}, data: { label } })); }}>
-                        <div className="top-bar"><button className="btn btn-save" onClick={onSave}>Save</button><button className="btn btn-run" onClick={() => onRun(null)} disabled={isRunning}>{isRunning ? "Running..." : "► Run All"}</button></div>
-                        <ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={useCallback((p)=>setEdges(e=>addEdge(p,e)),[])} onNodeClick={useCallback((e,n)=>setSelectedNode(n),[])} fitView><Background /><Controls /><MiniMap /></ReactFlow>
-                        {resultWindow && <DraggableWindow title={resultWindow.title} content={resultWindow.content} downloads={resultWindow.downloads} onClose={() => setResultWindow(null)} />}
-                        {searchResults && <div className="search-modal"><div className="window-header"><div className="window-title">Select Dataset</div><button className="window-close" onClick={() => setSearchResults(null)}>✕</button></div><div className="window-body">{searchResults.map((res, i) => <div key={i} className="search-result-item" onClick={() => onSelectSearchResult(res)}>{res.display}</div>)}</div></div>}
-                    </main>
-                </div>
-            );
+            return (<div className="app-container" ref={reactFlowWrapper}><aside className="sidebar"><div className="sidebar-header">AutoML Studio</div><div className="sidebar-content">{renderSidebar()}</div></aside><main className="workspace" onDragOver={(e)=>{e.preventDefault()}} onDrop={(e)=>{e.preventDefault(); const type = e.dataTransfer.getData('application/reactflow'); const label = e.dataTransfer.getData('application/reactflow/label'); if(type) setNodes(ns => ns.concat({ id: `node_${+new Date()}`, type, position: {x: e.clientX-350, y: e.clientY-50}, data: { label } })); }}><div className="top-bar"><button className="btn btn-save" onClick={onSave}>Save</button><button className="btn btn-run" onClick={() => onRun(null)} disabled={isRunning}>{isRunning ? "Running..." : "► Run All"}</button></div><ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={useCallback((p)=>setEdges(e=>addEdge(p,e)),[])} onNodeClick={useCallback((e,n)=>setSelectedNode(n),[])} fitView><Background /><Controls /><MiniMap /></ReactFlow>{resultWindow && <DraggableWindow title={resultWindow.title} content={resultWindow.content} downloads={resultWindow.downloads} onClose={() => setResultWindow(null)} />}{searchResults && <div className="search-modal"><div className="window-header"><div className="window-title">Select Dataset</div><button className="window-close" onClick={() => setSearchResults(null)}>✕</button></div><div className="window-body">{searchResults.map((res, i) => <div key={i} className="search-result-item" onClick={() => onSelectSearchResult(res)}>{res.display}</div>)}</div></div>}</main></div>);
         }
         ReactDOM.createRoot(document.getElementById('root')).render(<NodeEditor />);
     </script>

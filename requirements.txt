@@ -34,3 +34,8 @@ Pillow
 
 dnspython
 certifi
+
+openpyxl
+lxml
+pdfplumber
+python-docx
