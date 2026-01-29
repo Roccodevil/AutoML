@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>AutoML Workspace v5.0 Pro</title>
+    <link href="https://unpkg.com/reactflow@11.11.4/dist/style.css" rel="stylesheet" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
+    
+    <style>
+        /* --- GLOBAL LAYOUT --- */
+        body { font-family: 'Segoe UI', sans-serif; margin: 0; background-color: #1e1e1e; color: #e0e0e0; overflow: hidden; }
+        .app-container { display: flex; height: 100vh; }
+        
+        /* --- SIDEBAR --- */
+        .sidebar { width: 340px; background: #252526; border-right: 1px solid #333; display: flex; flex-direction: column; z-index: 5; }
+        .sidebar-header { padding: 15px; background: #333333; border-bottom: 1px solid #333; font-weight: bold; letter-spacing: 1px; color: #fff; }
+        .sidebar-content { padding: 15px; flex-grow: 1; overflow-y: auto; }
+        
+        /* NODES PALETTE */
+        .node-palette-item { padding: 12px; margin-bottom: 8px; background: #333; border: 1px solid #555; border-radius: 4px; cursor: grab; display: flex; align-items: center; gap: 10px; transition: all 0.2s; font-size: 13px; }
+        .node-palette-item:hover { background: #444; border-color: #007bff; transform: translateX(2px); }
+        .node-palette-item i { width: 20px; text-align: center; color: #aaa; }
+        
+        /* CONFIGURATION FORM */
+        .config-panel { animation: fadeIn 0.3s ease; }
+        .config-group { margin-bottom: 15px; }
+        .config-group label { display: block; margin-bottom: 6px; font-size: 11px; color: #aaa; text-transform: uppercase; font-weight: 700; letter-spacing: 0.5px; }
+        .config-input, .config-select { width: 100%; padding: 8px 10px; background: #3c3c3c; border: 1px solid #555; color: white; border-radius: 4px; box-sizing: border-box; outline: none; font-size: 13px; transition: border 0.2s; }
+        .config-input:focus, .config-select:focus { border-color: #007bff; background: #444; }
+        textarea.config-input { resize: vertical; min-height: 80px; font-family: 'Consolas', monospace; line-height: 1.4; }
+        
+        /* CHECKBOXES */
+        .checkbox-item { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; font-size: 13px; cursor: pointer; user-select: none; }
+        .checkbox-item input { accent-color: #007bff; }
+
+        /* --- WORKSPACE --- */
+        .workspace { flex-grow: 1; position: relative; background: #1e1e1e; }
+        .react-flow__node { background: #333; color: white; border: 1px solid #555; border-radius: 8px; padding: 10px 15px; font-size: 14px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); width: 160px; text-align: center; }
+        .react-flow__node-agent_1_data { border-left: 5px solid #007bff; }
+        .react-flow__node-agent_2_analysis { border-left: 5px solid #9c27b0; }
+        .react-flow__node-agent_3_preprocess { border-left: 5px solid #e91e63; }
+        .react-flow__node-agent_4_viz { border-left: 5px solid #ff9800; }
+        .react-flow__node-agent_5_feature { border-left: 5px solid #ffeb3b; color: #fff; text-shadow: 0 1px 2px black; }
+        .react-flow__node-agent_6_staging { border-left: 5px solid #00bcd4; }
+        .react-flow__node-agent_7_automl { border-left: 5px solid #4caf50; }
+        .react-flow__node-agent_8_export { border-left: 5px solid #607d8b; }
+
+        /* BUTTONS */
+        .btn { padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; font-weight: 600; transition: all 0.2s; color: white; display: flex; align-items: center; justify-content: center; gap: 8px; font-size: 13px; }
+        .btn:hover { opacity: 0.9; transform: translateY(-1px); }
+        .btn-run { background: #28a745; box-shadow: 0 2px 5px rgba(40,167,69,0.3); } 
+        .btn-save { background: #007bff; } 
+        .btn-home { background: #444; color: white; border: 1px solid #555; text-decoration: none; }
+        .btn-step { background: #ff9800; width: 100%; margin-top: 20px; color: #222; } 
+        .btn-dl { width: 100%; background: #333; margin-top: 10px; border: 1px solid #555; }
+        .btn-dl:hover { background: #444; }
+
+        /* --- DOWNLOAD CENTER GRID --- */
+        .dl-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 15px; }
+        .btn-dl-option { 
+            background: #2d2d2d; border: 1px solid #444; padding: 15px; 
+            text-decoration: none; color: #eee; border-radius: 6px; 
+            text-align: center; display: flex; flex-direction: column; 
+            align-items: center; gap: 8px; transition: all 0.2s; 
+        } 
+        .btn-dl-option:hover { background: #3d3d3d; border-color: #007bff; color: #fff; transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.3); }
+        .btn-dl-option i { font-size: 22px; color: #007bff; margin-bottom: 5px; }
+        .btn-dl-option span { font-size: 13px; font-weight: bold; }
+        .btn-dl-option small { font-size: 10px; color: #888; }
+
+        /* TOP BAR */
+        .top-bar { position: absolute; top: 15px; right: 20px; z-index: 10; display: flex; gap: 10px; }
+        
+        /* --- RESULTS WINDOW --- */
+        .results-window { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 900px; height: 85vh; background: #252526; border: 1px solid #444; border-radius: 8px; box-shadow: 0 20px 50px rgba(0,0,0,0.8); z-index: 9999; display: flex; flex-direction: column; resize: both; overflow: hidden; min-width: 400px; min-height: 300px; }
+        .window-header { padding: 12px 15px; background: #333; border-bottom: 1px solid #444; display: flex; justify-content: space-between; align-items: center; cursor: move; user-select: none; }
+        .window-title { font-weight: bold; font-size: 14px; display: flex; align-items: center; gap: 8px; }
+        .window-body { padding: 20px; overflow-y: auto; flex-grow: 1; font-size: 14px; line-height: 1.6; color: #ddd; background: #1e1e1e; }
+        .window-close { background: none; border: none; color: #aaa; cursor: pointer; font-size: 20px; line-height: 1; padding: 0 5px; }
+        .window-close:hover { color: white; }
+        
+        /* CONTENT STYLES */
+        .result-image { width: 100%; border-radius: 4px; border: 1px solid #444; margin-bottom: 10px; transition: transform 0.2s; }
+        .result-image:hover { transform: scale(1.02); z-index: 10; }
+        .result-section { margin-bottom: 20px; padding-bottom: 20px; border-bottom: 1px solid #333; }
+        pre.report-text { background: #151515; padding: 15px; border-radius: 4px; overflow-x: auto; border: 1px solid #333; font-family: 'Consolas', monospace; white-space: pre-wrap; color: #ccc; font-size: 13px; }
+        .leaderboard-table table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; }
+        .leaderboard-table th { background: #2d2d2d; padding: 10px; text-align: left; color: #007bff; border-bottom: 2px solid #444; }
+        .leaderboard-table td { border-bottom: 1px solid #333; padding: 8px; color: #ccc; }
+        .leaderboard-table tr:hover td { background: #252526; }
+
+        /* --- TERMINAL OVERLAY --- */
+        .terminal-overlay { position: fixed; bottom: 20px; right: 20px; width: 450px; background: #0d0d0d; border: 1px solid #333; border-radius: 6px; padding: 0; font-family: 'Consolas', 'Monaco', monospace; box-shadow: 0 10px 30px rgba(0,0,0,0.6); z-index: 10000; color: #0f0; opacity: 0.95; display: flex; flex-direction: column; overflow: hidden; }
+        .terminal-header { background: #222; padding: 8px 12px; font-size: 11px; color: #888; text-transform: uppercase; display: flex; justify-content: space-between; border-bottom: 1px solid #333; letter-spacing: 1px; }
+        .terminal-body { max-height: 250px; overflow-y: auto; padding: 12px; font-size: 12px; line-height: 1.5; flex-grow: 1; scroll-behavior: smooth; }
+        .log-line { margin-bottom: 4px; word-wrap: break-word; }
+        .blink { animation: blinker 1s linear infinite; }
+        
+        /* SEARCH MODAL */
+        .search-modal { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 500px; height: auto; max-height: 80vh; background: #252526; border: 1px solid #444; border-radius: 8px; z-index: 2000; display: flex; flex-direction: column; box-shadow: 0 20px 60px rgba(0,0,0,0.8); }
+        .search-result-item { padding: 15px; border-bottom: 1px solid #333; cursor: pointer; transition: background 0.2s; font-size: 14px; }
+        .search-result-item:hover { background: #007bff; color: white; }
+
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes blinker { 50% { opacity: 0; } }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/reactflow@11.11.4/dist/umd/index.js"></script>
+    
+    <script>
+        window.PROJECT_ID = "{{ project._id }}"; 
+        window.initialGraph = {{ project.graph_json | safe }};
+    </script>
+    
+    {% raw %}
+    <script type="text/babel">
+        const { ReactFlow, useNodesState, useEdgesState, addEdge, Background, Controls, MiniMap } = window.ReactFlow;
+        const { useState, useCallback, useRef, useEffect } = React;
+
+        // --- CONFIG ---
+        const nodeTypesList = [
+            { type: 'agent_1_data', label: '1. Data Acquisition', icon: 'fa-database' }, 
+            { type: 'agent_2_analysis', label: '2. Problem Analysis', icon: 'fa-brain' },
+            { type: 'agent_3_preprocess', label: '3. Preprocess', icon: 'fa-filter' }, 
+            { type: 'agent_4_viz', label: '4. Visualize', icon: 'fa-chart-bar' },
+            { type: 'agent_5_feature', label: '5. Feature Eng.', icon: 'fa-cogs' }, 
+            { type: 'agent_6_staging', label: '6. Stage Data', icon: 'fa-scissors' },
+            { type: 'agent_7_automl', label: '7. Train (H2O)', icon: 'fa-robot' }, 
+            { type: 'agent_8_export', label: '8. Export', icon: 'fa-file-export' },
+        ];
+        
+        // --- DRAGGABLE WINDOW ---
+        const DraggableWindow = ({ title, content, downloads, onClose }) => {
+            const [position, setPosition] = useState(null); 
+            const [isDragging, setIsDragging] = useState(false); 
+            const dragStart = useRef({ x: 0, y: 0 }); 
+            const windowRef = useRef(null);
+            
+            const handleMouseDown = (e) => { 
+                if(e.target.className.includes && e.target.className.includes('window-close')) return;
+                setIsDragging(true); 
+                const rect = windowRef.current.getBoundingClientRect(); 
+                dragStart.current = { x: e.clientX - rect.left, y: e.clientY - rect.top }; 
+            };
+            
+            useEffect(() => { 
+                const handleMouseMove = (e) => { if (isDragging) setPosition({ x: e.clientX - dragStart.current.x, y: e.clientY - dragStart.current.y }); }; 
+                const handleMouseUp = () => setIsDragging(false); 
+                window.addEventListener('mousemove', handleMouseMove); 
+                window.addEventListener('mouseup', handleMouseUp); 
+                return () => { window.removeEventListener('mousemove', handleMouseMove); window.removeEventListener('mouseup', handleMouseUp); }; 
+            }, [isDragging]);
+            
+            const style = position ? { left: position.x, top: position.y, transform: 'none' } : {};
+            
+            return (
+                <div ref={windowRef} className="results-window" style={style}>
+                    <div className="window-header" onMouseDown={handleMouseDown}>
+                        <div className="window-title"><i className="fas fa-poll-h"></i> &nbsp; {title}</div>
+                        <button className="window-close" onClick={onClose}>×</button>
+                    </div>
+                    <div className="window-body">
+                        {content}
+                        
+                        {/* --- DOWNLOAD CENTER --- */}
+                        {downloads && downloads.length > 0 && (
+                            <div className="result-section" style={{borderTop:'1px solid #444', paddingTop:'20px', marginTop:'20px'}}>
+                                <h4 style={{marginTop:0, color:'#007bff'}}><i className="fas fa-download"></i> Download Center</h4>
+                                <div className="dl-grid">
+                                    {downloads.map((d, i) => (
+                                        <a key={i} href={d.url} className="btn-dl-option" download target="_blank">
+                                            <i className={`fas ${d.icon || 'fa-file-download'}`}></i> 
+                                            <span>{d.label}</span>
+                                            {d.desc && <small>{d.desc}</small>}
+                                        </a>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        };
+
+        // --- MAIN COMPONENT ---
+        function NodeEditor() {
+            const [nodes, setNodes, onNodesChange] = useNodesState(window.initialGraph.nodes || []); 
+            const [edges, setEdges, onEdgesChange] = useEdgesState(window.initialGraph.edges || []); 
+            const [selectedNode, setSelectedNode] = useState(null); 
+            const [isRunning, setIsRunning] = useState(false); 
+            const [jobId, setJobId] = useState(null);
+            const [logs, setLogs] = useState([]);
+            const [resultWindow, setResultWindow] = useState(null); 
+            const [searchResults, setSearchResults] = useState(null);
+            const [nodeConfigs, setNodeConfigs] = useState({});
+            
+            // Input State
+            const [acqMode, setAcqMode] = useState("upload"); 
+            const [problemDesc, setProblemDesc] = useState("Predict customer churn"); 
+            const [selectedFile, setSelectedFile] = useState(null); 
+            const [searchQuery, setSearchQuery] = useState(""); 
+            const [genDesc, setGenDesc] = useState(""); 
+            const reactFlowWrapper = useRef(null);
+
+            const updateConfig = (type, key, val) => setNodeConfigs(p => ({...p, [type]: {...(p[type] || {}), [key]: val}})); 
+            const getConfig = (type) => nodeConfigs[type] || {};
+            const onConnect = useCallback((p) => setEdges((e) => addEdge(p, e)), [setEdges]); 
+            const onDragOver = useCallback((e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }, []); 
+            const onDrop = useCallback((e) => { e.preventDefault(); const type = e.dataTransfer.getData('application/reactflow'); const label = e.dataTransfer.getData('application/reactflow/label'); if(type) setNodes(ns => ns.concat({ id: `node_${+new Date()}`, type, position: {x: e.clientX-350, y: e.clientY-50}, data: { label } })); }, [reactFlowWrapper, setNodes]); 
+            const onNodeClick = useCallback((e, n) => setSelectedNode(n), []); 
+            const onSave = useCallback(() => { fetch('/api/save_graph', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ project_id: window.PROJECT_ID, graph_json: JSON.stringify({ nodes, edges }) }) }).then(res => res.json()).then(data => alert(data.message)); }, [nodes, edges]);
+
+            // --- POLLING ---
+            useEffect(() => {
+                let interval;
+                if (isRunning && jobId) {
+                    interval = setInterval(() => {
+                        fetch(`/api/status/${jobId}`)
+                            .then(res => res.json())
+                            .then(data => {
+                                if (data.logs) {
+                                    setLogs(data.logs);
+                                    const term = document.querySelector('.terminal-body');
+                                    if(term) setTimeout(() => term.scrollTop = term.scrollHeight, 50);
+                                }
+                                if (data.status === 'completed') {
+                                    setIsRunning(false); 
+                                    setJobId(null);
+                                    handlePipelineSuccess(data.result);
+                                } else if (data.status === 'error') {
+                                    setIsRunning(false); 
+                                    setJobId(null);
+                                    alert("Pipeline Failed: " + data.message);
+                                }
+                            })
+                            .catch(e => console.error("Poll Error:", e));
+                    }, 1000); 
+                }
+                return () => clearInterval(interval);
+            }, [isRunning, jobId]);
+
+            // --- RESULT HANDLER (Downloads Attached) ---
+            const handlePipelineSuccess = (data, targetNodeId = null) => {
+                let title = "Result"; let content = null; 
+                let downloads = [];
+                
+                // CRITICAL: Append job_id to ensure fresh file download
+                // Also handles separators correctly (? vs &)
+                const getUrl = (base) => {
+                    if (!base) return "#";
+                    const separator = base.includes('?') ? '&' : '?';
+                    return `${base}${separator}job_id=${data.job_id}`;
+                };
+
+                if (targetNodeId) {
+                    const nodeType = nodes.find(n => n.id === targetNodeId)?.type;
+                    title = `${nodeType.replace('agent_', '').replace('_', ' ').toUpperCase()}`;
+                    content = <pre className="report-text">{data.final_message}</pre>;
+
+                    if (['agent_1_data', 'agent_3_preprocess', 'agent_5_feature', 'agent_6_staging'].includes(nodeType)) {
+                        if (data.data_preview_html) content = <div className="table-responsive" dangerouslySetInnerHTML={{__html: data.data_preview_html}} />;
+                        downloads.push({label: "Download Dataset (CSV)", url: getUrl("/api/download/data.csv"), icon: "fa-table", desc: "Current State of Data"});
+                    }
+                    if (nodeType === 'agent_4_viz') {
+                        if (data.chart_urls) content = <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:'10px'}}>{data.chart_urls.map((u,i) => <img key={i} src={u} className="result-image"/>)}</div>;
+                        downloads.push({label: "Download Charts (ZIP)", url: getUrl("/api/download/charts.zip"), icon: "fa-images", desc: "All Generated Plots"});
+                    }
+                    if (nodeType === 'agent_7_automl') {
+                        if (data.leaderboard_html) content = <div className="leaderboard-table" dangerouslySetInnerHTML={{__html: data.leaderboard_html}} />;
+                        downloads.push({label: "Download Model", url: getUrl("/api/download/model_only"), icon: "fa-cube", desc: "H2O Artifacts"});
+                    }
+                    if (nodeType === 'agent_8_export') {
+                        content = <pre className="report-text">{data.report_content || data.final_message}</pre>;
+                        downloads.push({label: "Deployment Bundle", url: getUrl("/api/download/deployment_app.zip"), icon: "fa-rocket", desc: "Complete App"});
+                    }
+                } else {
+                    title = "Pipeline Complete";
+                    content = (
+                        <div>
+                            <div style={{background:'#1e4426', padding:'15px', borderRadius:'5px', border:'1px solid #28a745', marginBottom:'15px'}}>
+                                <h3 style={{marginTop:0, display:'flex', alignItems:'center', gap:'10px'}}>
+                                    <i className="fas fa-check-circle"></i> Success
+                                </h3>
+                                <p style={{margin:0}}><strong>Job ID:</strong> {data.job_id}</p>
+                                <p style={{margin:0}}><strong>Best Model:</strong> {data.best_model}</p>
+                            </div>
+                            <div dangerouslySetInnerHTML={{__html: data.leaderboard_html}}></div>
+                            <h4>Execution Log</h4>
+                            <pre className="report-text">{data.final_message}</pre>
+                        </div>
+                    );
+                    
+                    if(data.dl_app) downloads.push({label: "Deployment App", url: getUrl(data.dl_app), icon: "fa-rocket", desc: "Run Locally"});
+                    if(data.dl_model) downloads.push({label: "Model Files", url: getUrl(data.dl_model), icon: "fa-cube", desc: "Raw Binary"});
+                    downloads.push({label: "Charts Bundle", url: getUrl("/api/download/charts.zip"), icon: "fa-images", desc: "Visualization Archive"});
+                    downloads.push({label: "Final Dataset", url: getUrl("/api/download/data.csv"), icon: "fa-table", desc: "Processed CSV"});
+                    downloads.push({label: "Full Report", url: `/results/${data.job_id}/final_report.txt`, icon: "fa-file-alt", desc: "Text Audit"});
+                }
+
+                setResultWindow({ title, content, downloads });
+            };
+
+            const onRun = useCallback((targetNodeId = null) => {
+                if (acqMode === 'upload' && !selectedFile && !targetNodeId) { alert("Please select a file to upload."); return; }
+                
+                setIsRunning(true); 
+                setLogs(["Initializing secure connection..."]); 
+                setResultWindow(null); 
+                setSearchResults(null);
+                
+                const fd = new FormData(); 
+                fd.append('acquisition_mode', acqMode); 
+                fd.append('problem_description', problemDesc); 
+                fd.append('project_id', window.PROJECT_ID); 
+                fd.append('graph_json', JSON.stringify({ nodes, edges })); 
+                fd.append('node_configs', JSON.stringify(nodeConfigs)); 
+                if (targetNodeId) fd.append('target_node_id', targetNodeId);
+                if (acqMode === 'upload' && selectedFile) fd.append('file', selectedFile); 
+                if (acqMode === 'search') fd.append('search_query', searchQuery); 
+                if (acqMode === 'generate') fd.append('gen_description', genDesc);
+                
+                fetch('/api/run_pipeline', { method: 'POST', body: fd })
+                .then(res => res.json())
+                .then(data => { 
+                    if(data.status === 'started') setJobId(data.job_id);
+                    else { setIsRunning(false); alert(`Submission Error: ${data.message}`); }
+                }).catch(e => { setIsRunning(false); alert("Network Error: Could not reach server."); });
+            }, [nodes, edges, acqMode, selectedFile, problemDesc, searchQuery, genDesc, nodeConfigs]);
+            
+            const onSelectSearchResult = (result) => {
+                setSearchResults(null); setIsRunning(true); setLogs(["Downloading dataset..."]);
+                const fd = new FormData(); fd.append('acquisition_mode', 'download_selected'); fd.append('source', result.source); fd.append('dataset_id', result.id); fd.append('problem_description', problemDesc); fd.append('project_id', window.PROJECT_ID); fd.append('graph_json', JSON.stringify({ nodes, edges })); fd.append('node_configs', JSON.stringify(nodeConfigs));
+                fetch('/api/run_pipeline', { method: 'POST', body: fd }).then(res => res.json()).then(data => { if(data.status === 'started') setJobId(data.job_id); else { setIsRunning(false); alert(data.message); } });
+            };
+
+            const renderSidebar = () => { 
+                if (!selectedNode) return nodeTypesList.map(n => <div key={n.type} className="node-palette-item" draggable onDragStart={(e) => { e.dataTransfer.setData('application/reactflow', n.type); e.dataTransfer.setData('application/reactflow/label', n.label); }}><i className={`fas ${n.icon}`}></i> {n.label}</div>); 
+                const type = selectedNode.type; 
+                const cfg = getConfig(type); 
+                return (
+                    <div className="config-panel">
+                        <h3 style={{marginBottom:'15px', color:'#007bff'}}>{selectedNode.data.label}</h3>
+                        
+                        {type === 'agent_1_data' && (
+                            <>
+                                <div className="config-group"><label>Source</label><select className="config-select" value={acqMode} onChange={(e) => setAcqMode(e.target.value)}><option value="upload">Upload File</option><option value="search">Search Online</option><option value="generate">AI Generation</option></select></div>
+                                {acqMode === 'upload' && <div className="config-group"><label>File</label><input type="file" onChange={(e) => setSelectedFile(e.target.files[0])} className="config-input"/></div>}
+                                {acqMode === 'search' && <div className="config-group"><input type="text" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Topic (e.g. Titanic)" className="config-input"/></div>}
+                                {acqMode === 'generate' && <div className="config-group"><input type="text" value={genDesc} onChange={(e) => setGenDesc(e.target.value)} placeholder="Describe data structure..." className="config-input"/></div>}
+                                <div className="config-group"><label>Goal</label><textarea className="config-input" value={problemDesc} onChange={(e) => setProblemDesc(e.target.value)} /></div>
+                            </>
+                        )}
+                        
+                        {/* AGENT 3: EXPERT PREPROCESSING */}
+                        {type === 'agent_3_preprocess' && (
+                            <div className="config-panel">
+                                <div className="config-group">
+                                    <label>Preprocessing Mode</label>
+                                    <select className="config-select" value={cfg.mode || 'default'} onChange={(e) => updateConfig(type, 'mode', e.target.value)}>
+                                        <option value="default">🤖 Auto-Pilot (AI Driven)</option>
+                                        <option value="custom">🛠️ Manual Expert Mode</option>
+                                    </select>
+                                </div>
+                                <div className="config-group" style={{background: '#2d333b', padding: '10px', borderRadius: '6px', border: '1px solid #4daafc'}}>
+                                    <label style={{color: '#4daafc'}}>Natural Language Request</label>
+                                    <textarea className="config-input" style={{height: '60px', fontSize:'12px'}} placeholder="e.g. 'Remove outliers and log transform income'" value={cfg.user_request || ''} onChange={(e) => updateConfig(type, 'user_request', e.target.value)} />
+                                </div>
+                                
+                                {cfg.mode === 'custom' && (
+                                    <div style={{borderTop:'1px solid #444', paddingTop:'15px', marginTop:'15px'}}>
+                                        <h4 style={{marginTop:0, marginBottom:'10px', color:'#007bff', fontSize:'12px'}}>CATEGORICAL ENCODING</h4>
+                                        <div className="config-group">
+                                            <label>Method</label>
+                                            <select className="config-select" value={cfg.categorical_encode || 'ordinal'} onChange={(e) => updateConfig(type, 'categorical_encode', e.target.value)}>
+                                                <option value="ordinal">Ordinal Encoding (0, 1, 2...) [Recommended]</option>
+                                                <option value="onehot">One-Hot Encoding (Dummy Vars)</option>
+                                            </select>
+                                            <small style={{color:'#aaa', fontSize:'10px'}}>Ordinal keeps dataset smaller. OneHot creates many columns.</small>
+                                        </div>
+
+                                        <h4 style={{marginTop:'15px', marginBottom:'10px', color:'#ff9800', fontSize:'12px'}}>NUMERIC CONFIG</h4>
+                                        <div className="config-group">
+                                            <label>Imputation</label>
+                                            <select className="config-select" value={cfg.numeric_impute || 'mean'} onChange={(e) => updateConfig(type, 'numeric_impute', e.target.value)}>
+                                                <option value="mean">Mean</option>
+                                                <option value="median">Median</option>
+                                                <option value="knn">KNN (Accurate)</option>
+                                                <option value="zero">Constant (0)</option>
+                                            </select>
+                                        </div>
+
+                                        <div className="config-group">
+                                            <label>Scaling / Normalization</label>
+                                            <select className="config-select" value={cfg.numeric_scale || 'standard'} onChange={(e) => updateConfig(type, 'numeric_scale', e.target.value)}>
+                                                <option value="standard">StandardScaler (Z-Score)</option>
+                                                <option value="minmax">MinMaxScaler (0-1)</option>
+                                                <option value="robust">RobustScaler (Outlier Safe)</option>
+                                                <option value="maxabs">MaxAbsScaler</option>
+                                                <option value="normalizer">Normalizer (Rows)</option>
+                                                <option value="none">None</option>
+                                            </select>
+                                        </div>
+
+                                        <div className="config-group">
+                                            <label>Transformation</label>
+                                            <select className="config-select" value={cfg.numeric_transform || 'none'} onChange={(e) => updateConfig(type, 'numeric_transform', e.target.value)}>
+                                                <option value="none">None</option>
+                                                <option value="log">Log1p (Reduce Skew)</option>
+                                                <option value="yeo-johnson">Yeo-Johnson (Power)</option>
+                                                <option value="box-cox">Box-Cox (Strictly Positive)</option>
+                                                <option value="binarize">Binarize (0/1)</option>
+                                                <option value="quantile_normal">Quantile (Gaussian)</option>
+                                                <option value="quantile_uniform">Quantile (Uniform)</option>
+                                            </select>
+                                        </div>
+
+                                        <div className="config-group">
+                                            <label>Discretization (Binning)</label>
+                                            <select className="config-select" value={cfg.numeric_binning || 'none'} onChange={(e) => updateConfig(type, 'numeric_binning', e.target.value)}>
+                                                <option value="none">None</option>
+                                                <option value="uniform">Uniform Width</option>
+                                                <option value="quantile">Quantile (Equal Freq)</option>
+                                                <option value="kmeans">K-Means Clusters</option>
+                                            </select>
+                                        </div>
+
+                                        <div className="config-group">
+                                            <div className="checkbox-item"><input type="checkbox" checked={cfg.outlier_handling === 'clip'} onChange={(e) => updateConfig(type, 'outlier_handling', e.target.checked ? 'clip' : 'none')} /> Clip Outliers (1st-99th)</div>
+                                            <div className="checkbox-item"><input type="checkbox" checked={cfg.dimensionality_reduction === 'pca'} onChange={(e) => updateConfig(type, 'dimensionality_reduction', e.target.checked ? 'pca' : 'none')} /> Apply PCA (95% Var)</div>
+                                            <div className="checkbox-item"><input type="checkbox" checked={cfg.feature_interaction === 'poly'} onChange={(e) => updateConfig(type, 'feature_interaction', e.target.checked ? 'poly' : 'none')} /> Polynomial Features (Degree 2)</div>
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        )}
+
+                        {type === 'agent_4_viz' && (
+                            <div className="config-panel">
+                                <div className="config-group"><label>Preferred Plot</label><select className="config-select" value={cfg.pref_type || 'Auto'} onChange={(e) => updateConfig(type, 'pref_type', e.target.value)}><option value="Auto">Auto</option><option value="histplot">Histogram</option><option value="scatterplot">Scatter</option><option value="boxplot">Box</option><option value="heatmap">Heatmap</option><option value="pairplot">Pairplot</option></select></div>
+                                <div className="config-group"><label>Max Charts</label><input type="range" min="1" max="10" value={cfg.max_charts || 6} onChange={(e) => updateConfig(type, 'max_charts', e.target.value)} className="config-input"/></div>
+                                {/* NEW: Natural Language Input for Viz */}
+                                <div className="config-group" style={{marginTop:'15px'}}>
+                                    <label style={{color:'#4daafc'}}>Natural Language Command</label>
+                                    <textarea className="config-input" style={{height:'60px', fontSize:'12px', borderColor:'#4daafc'}} placeholder="e.g. 'Show heatmap of correlations and scatter plot of Age vs Price'" value={cfg.user_request || ''} onChange={(e) => updateConfig(type, 'user_request', e.target.value)} />
+                                </div>
+                            </div>
+                        )}
+                        
+                        {type === 'agent_7_automl' && (<div className="config-group"><label>Duration</label><select className="config-select" value={cfg.mode || 'default'} onChange={(e) => updateConfig(type, 'mode', e.target.value)}><option value="default">Fast (1 min)</option><option value="custom">Deep (5 mins)</option></select></div>)}
+
+                        <button className="btn btn-step" onClick={() => onRun(selectedNode.id)}>{isRunning ? <i className="fas fa-spinner fa-spin"></i> : <i className="fas fa-play"></i>} Run This Step</button>
+                        <button className="btn btn-dl" onClick={() => setSelectedNode(null)}>Back</button>
+                    </div>
+                ); 
+            };
+
+            return (
+                <div className="app-container" ref={reactFlowWrapper}>
+                    <aside className="sidebar"><div className="sidebar-header">AutoML Studio</div><div className="sidebar-content">{renderSidebar()}</div></aside>
+                    <main className="workspace" onDragOver={onDragOver} onDrop={onDrop}>
+                        <div className="top-bar">
+                            <a href="/" className="btn btn-home" style={{marginRight:'10px'}}><i className="fas fa-home"></i> Home</a>
+                            <button className="btn btn-save" onClick={onSave}>Save Graph</button>
+                            <button className="btn btn-run" onClick={() => onRun(null)} disabled={isRunning}>{isRunning ? "Processing..." : "► Run All"}</button>
+                        </div>
+                        <ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect} onNodeClick={onNodeClick} fitView><Background /> <Controls /> <MiniMap /></ReactFlow>
+                        
+                        {isRunning && (
+                            <div className="terminal-overlay">
+                                <div className="terminal-header"><span>● SYSTEM LOGS</span><span>PID: {jobId ? jobId.split('-')[0] : '...'}</span></div>
+                                <div className="terminal-body">
+                                    {logs.length === 0 && <div className="log-line">> Initiating...</div>}
+                                    {logs.map((l, i) => <div key={i} className="log-line">> {l}</div>)}
+                                    <div className="log-line"><span className="blink">_</span></div>
+                                </div>
+                            </div>
+                        )}
+
+                        {resultWindow && <DraggableWindow title={resultWindow.title} content={resultWindow.content} downloads={resultWindow.downloads} onClose={() => setResultWindow(null)} />}
+                        
+                        {searchResults && <div className="search-modal"><div className="window-header"><div className="window-title">Select Dataset</div><button className="window-close" onClick={() => setSearchResults(null)}>✕</button></div><div className="window-body">{searchResults.map((res, i) => <div key={i} className="search-result-item" onClick={() => onSelectSearchResult(res)}>{res.display}</div>)}</div></div>}
+                    </main>
+                </div>
+            );
+        }
+        ReactDOM.createRoot(document.getElementById('root')).render(<NodeEditor />);
+    </script>
+    {% endraw %}
+</body>
+</html>

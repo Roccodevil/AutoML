@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>AutoNLP Studio</title>
+    <link href="https://unpkg.com/reactflow@11.11.4/dist/style.css" rel="stylesheet" />
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
+    <style>
+        body { font-family: 'Segoe UI', sans-serif; background: #1e1e1e; color: #e0e0e0; margin: 0; overflow: hidden; }
+        .app-container { display: flex; height: 100vh; }
+        .sidebar { width: 340px; background: #252526; border-right: 1px solid #333; display: flex; flex-direction: column; z-index: 5; }
+        .workspace { flex-grow: 1; position: relative; }
+        
+        /* Node Styles */
+        .react-flow__node { background: #333; color: white; border: 2px solid #555; border-radius: 8px; padding: 10px; width: 160px; text-align: center; font-size: 12px; }
+        .node-running { border-color: #00d4ff; box-shadow: 0 0 15px rgba(0, 212, 255, 0.4); animation: pulse 1s infinite; }
+        .node-finished { border-color: #00e676; background: #1b3a24; }
+        .node-error { border-color: #ff1744; background: #3a1b1b; }
+        @keyframes pulse { 0% { transform: scale(1); } 50% { transform: scale(1.02); } 100% { transform: scale(1); } }
+
+        /* Config Panel */
+        .config-panel { padding: 15px; }
+        .config-group { margin-bottom: 15px; }
+        .config-input { width: 100%; background: #3c3c3c; border: 1px solid #555; color: white; padding: 8px; border-radius: 4px; box-sizing: border-box; }
+        
+        .btn { padding: 10px 20px; border-radius: 4px; border: none; cursor: pointer; font-weight: bold; color: white; width: 100%; }
+        .btn-run { background: #00d4ff; color: #000; }
+        .btn-save { background: #444; }
+
+        /* Results */
+        .results-window { position: absolute; top: 10%; left: 10%; right: 10%; bottom: 10%; background: #252526; border: 1px solid #444; z-index: 100; padding: 20px; border-radius: 8px; box-shadow: 0 0 50px black; overflow-y: auto; display: flex; flex-direction: column; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+    <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    <script src="https://unpkg.com/reactflow@11.11.4/dist/umd/index.js"></script>
+    <script>window.PROJECT_ID = "{{ project._id }}"; window.initialGraph = {{ project.graph_json | safe }};</script>
+    {% raw %}
+    <script type="text/babel">
+        const { ReactFlow, useNodesState, useEdgesState, addEdge, Background, Controls } = window.ReactFlow;
+        const { useState, useCallback, useEffect } = React;
+
+        function App() {
+            const [nodes, setNodes, onNodesChange] = useNodesState(window.initialGraph.nodes);
+            const [edges, setEdges, onEdgesChange] = useEdgesState(window.initialGraph.edges);
+            const [selectedNode, setSelectedNode] = useState(null);
+            const [nodeConfigs, setNodeConfigs] = useState({});
+            
+            const [isRunning, setIsRunning] = useState(false);
+            const [jobId, setJobId] = useState(null);
+            const [result, setResult] = useState(null);
+
+            // Real-time Status Polling
+            useEffect(() => {
+                if (!isRunning || !jobId) return;
+                const interval = setInterval(() => {
+                    fetch(`/api/status_nlp/${jobId}`).then(r => r.json()).then(data => {
+                        if (data.logs) {
+                            setNodes(nds => nds.map(node => {
+                                const id = node.id; // Matches agent_nlp_X...
+                                const running = data.logs.some(l => l.includes(`START:${id}`));
+                                const finished = data.logs.some(l => l.includes(`FINISH:${id}`));
+                                const error = data.logs.some(l => l.includes(`ERROR:${id}`));
+                                
+                                if (error) return { ...node, className: "node-error" };
+                                if (finished) return { ...node, className: "node-finished" };
+                                if (running) return { ...node, className: "node-running" };
+                                return node;
+                            }));
+                        }
+                        if (data.status === 'completed') { setIsRunning(false); setResult(data.result); }
+                        if (data.status === 'error') { setIsRunning(false); alert(data.message); }
+                    });
+                }, 1000);
+                return () => clearInterval(interval);
+            }, [isRunning, jobId]);
+
+            const runPipeline = () => {
+                // Get Configs
+                const n1 = nodeConfigs['agent_nlp_1_data'] || { mode: 'input_text' };
+                const n2 = nodeConfigs['agent_nlp_2_task'] || { instruction: 'Summarize this' };
+
+                if (n1.mode === 'input_text' && !n1.input_text) return alert("Enter Text!");
+                if (n1.mode === 'upload' && !n1.file) return alert("Upload File!");
+
+                setIsRunning(true);
+                setNodes(nds => nds.map(n => ({ ...n, className: "" }))); // Reset
+
+                const fd = new FormData();
+                fd.append('project_id', window.PROJECT_ID);
+                fd.append('acquisition_mode', n1.mode);
+                fd.append('problem_description', n2.instruction);
+                fd.append('node_configs', JSON.stringify(nodeConfigs));
+                
+                if(n1.mode === 'input_text') fd.append('input_text', n1.input_text);
+                if(n1.mode === 'upload') fd.append('file', n1.file);
+
+                fetch('/api/run_nlp', { method: 'POST', body: fd })
+                    .then(r => r.json())
+                    .then(d => setJobId(d.job_id));
+            };
+
+            const updateConfig = (key, val) => {
+                if(!selectedNode) return;
+                setNodeConfigs(prev => ({
+                    ...prev,
+                    [selectedNode.id]: { ...prev[selectedNode.id], [key]: val }
+                }));
+            };
+
+            const renderSidebar = () => {
+                if(!selectedNode) return <div className="config-panel">Select a node to configure.</div>;
+                const id = selectedNode.id;
+                const cfg = nodeConfigs[id] || {};
+
+                return (
+                    <div className="config-panel">
+                        <h3>{selectedNode.data.label}</h3>
+                        
+                        {id === 'agent_nlp_1_data' && (
+                            <>
+                                <div className="config-group">
+                                    <label>Source</label>
+                                    <select className="config-input" value={cfg.mode || 'input_text'} onChange={e => updateConfig('mode', e.target.value)}>
+                                        <option value="input_text">Paste Text</option>
+                                        <option value="upload">Upload File</option>
+                                    </select>
+                                </div>
+                                {cfg.mode === 'upload' ? 
+                                    <input type="file" onChange={e => updateConfig('file', e.target.files[0])} /> :
+                                    <textarea className="config-input" value={cfg.input_text || ''} onChange={e => updateConfig('input_text', e.target.value)} placeholder="Text here..." />
+                                }
+                            </>
+                        )}
+
+                        {id === 'agent_nlp_2_task' && (
+                            <div className="config-group">
+                                <label>Prompt</label>
+                                <textarea className="config-input" value={cfg.instruction || ''} onChange={e => updateConfig('instruction', e.target.value)} placeholder="e.g. Summarize, or Classify..." />
+                            </div>
+                        )}
+
+                        {id === 'agent_nlp_3_preprocess' && (
+                            <div className="config-group">
+                                <label>Options</label>
+                                <br />
+                                <label><input type="checkbox" checked={cfg.lowercase !== false} onChange={e => updateConfig('lowercase', e.target.checked)} /> Lowercase</label><br/>
+                                <label><input type="checkbox" checked={cfg.remove_stopwords !== false} onChange={e => updateConfig('remove_stopwords', e.target.checked)} /> Stopwords</label>
+                            </div>
+                        )}
+
+                        <button className="btn btn-save" style={{marginTop:20}} onClick={() => setSelectedNode(null)}>Done</button>
+                    </div>
+                );
+            };
+
+            return (
+                <div className="app-container">
+                    <div className="sidebar">{renderSidebar()}</div>
+                    <div className="workspace">
+                        <div style={{position:'absolute', top:10, right:10, zIndex:10}}>
+                            <button className="btn btn-run" onClick={runPipeline} disabled={isRunning}>
+                                {isRunning ? "Running..." : "Run Pipeline"}
+                            </button>
+                        </div>
+                        <ReactFlow 
+                            nodes={nodes} edges={edges} 
+                            onNodesChange={onNodesChange} onEdgesChange={onEdgesChange}
+                            onNodeClick={(e, n) => setSelectedNode(n)} fitView
+                        >
+                            <Background color="#333" gap={20} />
+                            <Controls />
+                        </ReactFlow>
+                        {result && (
+                            <div className="results-window">
+                                <button style={{alignSelf:'flex-end', background:'none', border:'none', color:'#aaa', fontSize:20, cursor:'pointer'}} onClick={() => setResult(null)}>×</button>
+                                <h2>Results</h2>
+                                {result.summary_result ? <pre style={{whiteSpace:'pre-wrap'}}>{result.summary_result}</pre> : <p>{result.final_message}</p>}
+                                {result.processed_preview && <div dangerouslySetInnerHTML={{__html: result.processed_preview}} />}
+                                {result.dl_app && <a href={result.dl_app} className="btn btn-run" style={{textAlign:'center', marginTop:20}}>Download App</a>}
+                            </div>
+                        )}
+                    </div>
+                </div>
+            );
+        }
+        ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+    </script>
+    {% endraw %}
+</body>
+</html>

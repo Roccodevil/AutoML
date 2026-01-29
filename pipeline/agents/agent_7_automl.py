@@ -8,45 +8,37 @@ class AutoMLAgent:
         
         df = state.get('X_train')
         y = state.get('y_train')
-        
-        # Validation
         if df is None or y is None: raise ValueError("Training data missing.")
         
-        print(f"   Training on {len(df)} rows.")
-        full_train = pd.concat([df, y], axis=1)
-        
-        # Init H2O
+        # 1. Safe H2O Initialization
         try: 
-            if h2o.connection() is None: h2o.init(nthreads=-1)
+            # Try to connect, if fails, start new with lower memory reqs if needed
+            if h2o.connection() is None: h2o.init(nthreads=-1, max_mem_size="2G")
         except: 
             h2o.init(nthreads=-1)
 
+        # 2. Prepare Data
+        full_train = pd.concat([df, y], axis=1)
         hf_train = h2o.H2OFrame(full_train)
         target_col = y.name
         x_cols = [c for c in hf_train.columns if c != target_col]
         
-        # Check Problem Type
+        # 3. Handle Classification vs Regression
         problem_type = state['analysis'].get('problem_type', 'classification').lower()
         if 'classification' in problem_type:
             hf_train[target_col] = hf_train[target_col].asfactor()
-            
-            # --- CRITICAL FIX: H2O Level Check ---
-            # Ask H2O explicitly how many classes it sees
             n_levels = hf_train[target_col].nlevels()[0]
-            print(f"   H2O detected {n_levels} unique classes in target '{target_col}'.")
-            
             if n_levels < 2:
-                # Get the unique values to show user
-                vals = hf_train[target_col].unique().as_data_frame().values.flatten()
-                raise ValueError(
-                    f"TRAINING STOPPED: The training set has only 1 class ({vals}). "
-                    "AutoML needs at least 2 classes to learn. "
-                    "Solution: Check if Agent 1 extracted the whole file, or if 'Staging' split accidentally removed a class."
-                )
+                raise ValueError("Training Error: Target variable has only 1 class. Need 2+ for classification.")
 
-        # Configure AutoML
+        # 4. Check User Config for Duration
+        config = state.get('node_configs', {}).get('agent_7_automl', {})
+        # Default to 60s to prevent browser timeout (Freeze)
+        runtime = 60 if config.get('mode') == 'default' else 300 
+        
+        print(f"   Starting H2O AutoML (Limit: {runtime}s)...")
         aml = H2OAutoML(
-            max_runtime_secs=300,
+            max_runtime_secs=runtime,  # <--- PREVENTS LONG WAITS
             seed=42,
             project_name=f"AutoML_{state.get('project_id', 'def')}",
             verbosity="info"
@@ -54,11 +46,14 @@ class AutoMLAgent:
         
         aml.train(x=x_cols, y=target_col, training_frame=hf_train)
         
-        # Save Results
+        # 5. Save Results
         lb = aml.leaderboard
         state['best_model'] = aml.leader
         state['best_model_id'] = aml.leader.model_id
         state['leaderboard'] = lb.as_data_frame()
-        state['leaderboard_html'] = lb.as_data_frame().head(10).to_html(classes='table', border=0, index=False)
+        # Safe HTML conversion
+        lb_df = lb.as_data_frame()
+        state['leaderboard_html'] = lb_df.head(10).to_html(classes='table', border=0, index=False)
         
+        print(f"   AutoML Complete. Best Model: {aml.leader.model_id}")
         return state

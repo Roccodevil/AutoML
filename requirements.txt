@@ -1,41 +1,60 @@
+# --- CPU-Only Enforcement for PyTorch (Must be at the top) ---
+--extra-index-url https://download.pytorch.org/whl/cpu
+
 # Flask Web Server & Database
 Flask
-flask-pymongo[srv]  # Use [srv] for Atlas connectivity
+flask-pymongo[srv]
 python-dotenv
-gunicorn          # For production deployment
+gunicorn
 
 # Core Data Science & ML
 pandas
+numpy
 scikit-learn
 joblib
+statsmodels
 
 # AutoML Framework
 h2o
 optuna
 
-# LangChain, LangGraph & LLM API Connectors
+# NLP & Deep Learning (CPU Optimized)
+torch
+transformers
+nltk
+spacy
+textblob
+
+# LangChain Ecosystem
 langchain
 langchain-core
 langchain-groq
 langgraph
+langchain-community
 tavily-python
-langchain-community 
 
-# --- Dataset Search Libraries ---
+# Data Acquisition & File Handling
 datasets
 huggingface_hub
 kaggle
+pdfplumber
+python-docx
+openpyxl
+lxml
+xlrd
 
 # Visualization
 matplotlib
 seaborn
 Pillow
 
+# Export, Deployment & API
+fastapi
+uvicorn
+watchdog
 
+# Utilities
 dnspython
 certifi
-
-openpyxl
-lxml
-pdfplumber
-python-docx
+requests
+regex

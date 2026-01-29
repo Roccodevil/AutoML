@@ -4,186 +4,271 @@ import joblib
 import shutil
 import zipfile
 import pandas as pd
+import numpy as np
+import datetime
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_core.output_parsers import StrOutputParser
 from core.llm_services import llm_powerful_api
 
 class ExportAgent: 
     def run(self, state):
-        print("-> Agent 8: Preparing granular download artifacts...")
-        model = state['best_model']
+        print("-> Agent 8: Packaging Artifacts & Generating App...")
+        
         results_dir = state['results_dir']
+        model = state.get('best_model')
         models_dir = os.path.join(results_dir, "models")
-        charts_dir = os.path.join(results_dir, "charts")
         os.makedirs(models_dir, exist_ok=True)
-        
-        final_model_path = ""
-        model_type = "sklearn" 
-        h2o_version = "3.46.0.8" # Default fallback
 
-        # --- 1. SAVE RAW MODEL ---
-        if "h2o" in str(type(model)).lower():
-            model_type = "h2o"
-            h2o_version = h2o.__version__ # Capture EXACT server version
-            try:
-                # Try MOJO first (Version independent)
-                final_model_path = model.download_mojo(path=models_dir, get_genmodel_jar=False)
-            except:
-                # Fallback to Binary (Version locked)
-                final_model_path = h2o.save_model(model=model, path=models_dir, force=True)
-        else:
-            final_model_path = os.path.join(models_dir, "model.pkl")
-            joblib.dump(model, final_model_path)
-
-        state['final_model_path'] = final_model_path
-
-        # --- 2. BUNDLE CHARTS ---
-        # Explicitly zip charts here to ensure the file exists for the route
-        if os.path.exists(charts_dir) and len(os.listdir(charts_dir)) > 0:
-            zip_path = os.path.join(results_dir, "charts_bundle.zip")
-            with zipfile.ZipFile(zip_path, 'w') as zf:
-                for f in os.listdir(charts_dir):
-                    if f.endswith('.png'):
-                        zf.write(os.path.join(charts_dir, f), f)
-            state['charts_zip_path'] = zip_path # Notify state
-
-        # --- 3. GENERATE APP ---
-        # CRITICAL FIX: Pin exact H2O version
-        reqs = "pandas\nstreamlit\nwatchdog\n"
-        if model_type == "h2o": 
-            reqs += f"h2o=={h2o_version}\n" # <--- LOCK VERSION
-        else: 
-            reqs += "scikit-learn\njoblib\n"
-            
-        with open(os.path.join(models_dir, "requirements.txt"), "w") as f: f.write(reqs)
-
-        # AI-Generated Form
-        df_sample = state.get('X_train')
-        if df_sample is None: df_sample = state.get('cleaned_df')
-        
-        print("   Generating AI Dashboard code...")
-        single_pred_code = self._generate_single_pred_code(df_sample, state['problem_description'])
-        
-        model_filename = os.path.basename(final_model_path)
-        app_content = self._generate_streamlit_app(model_type, model_filename, single_pred_code)
-        with open(os.path.join(models_dir, "app.py"), "w") as f: f.write(app_content)
-
-        # Scripts
-        win_script = "@echo off\necho Installing specific H2O version match...\npip install -r requirements.txt\ncls\nstreamlit run app.py\npause"
-        with open(os.path.join(models_dir, "run_windows.bat"), "w") as f: f.write(win_script)
-        linux_script = "#!/bin/bash\npip3 install -r requirements.txt\nstreamlit run app.py"
-        with open(os.path.join(models_dir, "run_linux.sh"), "w") as f: f.write(linux_script)
-
-        # Zip App Package
-        zip_path = os.path.join(results_dir, "deployment_app.zip")
-        with zipfile.ZipFile(zip_path, 'w') as zipf:
-            zipf.write(os.path.join(models_dir, "app.py"), "app.py")
-            zipf.write(final_model_path, model_filename)
-            zipf.write(os.path.join(models_dir, "run_windows.bat"), "run_windows.bat")
-            zipf.write(os.path.join(models_dir, "run_linux.sh"), "run_linux.sh")
-            zipf.write(os.path.join(models_dir, "requirements.txt"), "requirements.txt")
-        
-        state['deployment_zip'] = zip_path
-
-        # --- 4. FINAL REPORT ---
+        # 1. REPORT
         report_path = os.path.join(results_dir, "final_report.txt")
-        with open(report_path, "w") as f:
-            f.write(f"Task: {state['problem_description']}\n")
-            f.write(f"Best Model: {state['best_model_id']}\n")
-            f.write(f"H2O Version Used: {h2o_version}\n\n")
-            f.write("--- ARTIFACTS GENERATED ---\n")
-            f.write("1. Interactive Dashboard (deployment_app.zip)\n")
-            f.write("2. Raw Model File\n")
-            f.write("3. Charts Bundle\n")
+        self._write_report(state, report_path)
+        with open(report_path, "r", encoding='utf-8') as f: state['report_content'] = f.read()
+
+        # 2. SAVE MODEL BINARY
+        model_filename = "model_not_trained.txt"
+        model_type = "none"
+        
+        if model:
+            try:
+                # Check for H2O
+                if hasattr(model, 'download_mojo'):
+                    model_type = "h2o"
+                    # Try saving MOJO (Best for deployment)
+                    try:
+                        mojo_path = model.download_mojo(path=models_dir, get_genmodel_jar=True)
+                        model_filename = os.path.basename(mojo_path)
+                    except:
+                        # Fallback to Binary
+                        model_filename = "model.bin"
+                        h2o.save_model(model, path=models_dir, force=True, filename=model_filename)
+                else:
+                    model_type = "sklearn"
+                    model_filename = "model.pkl"
+                    joblib.dump(model, os.path.join(models_dir, model_filename))
+            except Exception as e:
+                print(f"   [Agent 8] Model Save Failed: {e}")
+
+        # 3. ZIP MODEL FILES (Standalone Download)
+        model_zip_path = os.path.join(results_dir, "model_artifacts.zip")
+        with zipfile.ZipFile(model_zip_path, 'w') as zf:
+            for f in os.listdir(models_dir):
+                # Don't zip the app files yet, just the model files
+                if f not in ["app.py", "requirements.txt", "run_app.bat", "README.txt"]:
+                    zf.write(os.path.join(models_dir, f), f)
+        state['dl_model'] = "/api/download/model_only"
+
+        # 4. GENERATE APP (Deterministic Template)
+        if model and model_type != "none":
+            # Extract Schema for Inputs
+            df_train = state.get('X_train')
+            if df_train is None: df_train = state.get('current_data')
+            schema = self._get_data_schema(df_train)
+
+            # Generate Robust Code
+            app_code = self._generate_robust_app_code(model_filename, model_type, schema)
+
+            # Write Files
+            with open(os.path.join(models_dir, "app.py"), "w", encoding='utf-8') as f:
+                f.write(app_code)
+                
+            # Clean Requirements (No unnecessary libs)
+            reqs = "streamlit\npandas\nnumpy\n"
+            if model_type == "h2o": reqs += "h2o\n"
+            else: reqs += "scikit-learn\njoblib\n"
             
-        with open(report_path, "r") as f: state['report_content'] = f.read()
+            with open(os.path.join(models_dir, "requirements.txt"), "w") as f: f.write(reqs)
+            
+            # Windows Runner
+            with open(os.path.join(models_dir, "run_app.bat"), "w") as f:
+                f.write("@echo off\ncall pip install -r requirements.txt\nstreamlit run app.py\npause")
+
+            # Instructions
+            self._write_instructions(models_dir)
+
+            # Zip App Bundle
+            app_zip_path = os.path.join(results_dir, "deployment_app.zip")
+            with zipfile.ZipFile(app_zip_path, 'w') as zf:
+                zf.write(os.path.join(models_dir, "app.py"), "app.py")
+                zf.write(os.path.join(models_dir, "requirements.txt"), "requirements.txt")
+                zf.write(os.path.join(models_dir, "run_app.bat"), "run_app.bat")
+                zf.write(os.path.join(models_dir, "README.txt"), "README.txt")
+                zf.write(os.path.join(models_dir, model_filename), model_filename)
+                
+                # If H2O, include the jar if it exists
+                if model_type == "h2o":
+                    for f in os.listdir(models_dir):
+                        if f.endswith(".jar"): zf.write(os.path.join(models_dir, f), f)
+
+            state['dl_app'] = "/api/download/deployment_app.zip"
+
+        state['final_message'] = state['report_content']
         return state
 
-    def _generate_single_pred_code(self, df, problem_desc):
-        if df is None: return "st.warning('No data for form generation.')"
-        schema_info = []
-        for col in df.columns:
-            dtype = str(df[col].dtype)
-            min_val, max_val = "N/A", "N/A"
-            if 'int' in dtype or 'float' in dtype:
-                min_val = float(df[col].min()); max_val = float(df[col].max())
-            schema_info.append(f"- {col} ({dtype}) Min:{min_val} Max:{max_val}")
-        
-        schema_text = "\n".join(schema_info[:25]) 
-        prompt = ChatPromptTemplate.from_template(
-            """Write Python Streamlit code for sidebar inputs based on this schema: {schema}.
-            - Use `st.sidebar`.
-            - Create a dictionary `input_data`.
-            - Convert to `input_df = pd.DataFrame([input_data])`.
-            - Return ONLY code."""
-        )
-        try: 
-            return (prompt | llm_powerful_api | StrOutputParser()).invoke({"schema": schema_text}).replace("```python","").replace("```","")
-        except: 
-            return "st.error('AI Gen Failed')"
+    def _get_data_schema(self, df):
+        if df is None: return {}
+        schema = {}
+        for col in df.columns[:20]: # Limit inputs
+            is_num = pd.api.types.is_numeric_dtype(df[col])
+            info = {
+                "type": "number" if is_num else "text",
+                "default": float(df[col].mean()) if is_num else str(df[col].mode()[0]),
+                "options": df[col].unique().tolist()[:10] if not is_num and df[col].nunique() < 10 else None
+            }
+            schema[col] = info
+        return schema
 
-    def _generate_streamlit_app(self, model_type, model_filename, single_pred_code):
-        indented_ai_code = "\n".join(["    " + line for line in single_pred_code.split("\n")])
-        
-        code = f"""import streamlit as st
-import pandas as pd
-import os
-import sys
-st.set_page_config(page_title="AI Dashboard", layout="wide")
-st.title("🤖 AI Prediction Dashboard")
+    def _write_instructions(self, folder):
+        text = """=== AI APP DEPLOYMENT GUIDE ===
 
-# Model Loader
+1. INSTALLATION
+   - Ensure you have Python 3.9+ installed.
+   - If using an H2O model (default), you MUST have Java installed.
+     Check by running: java -version
+
+2. RUNNING THE APP (Windows)
+   - Double-click 'run_app.bat'.
+   - This will automatically install dependencies and launch the browser.
+
+3. RUNNING THE APP (Mac/Linux)
+   Open terminal in this folder and run:
+   pip install -r requirements.txt
+   streamlit run app.py
+
+4. USING THE APP
+   - Tab 1 (Single): Use the sidebar to input values.
+   - Tab 2 (Batch): Upload a CSV file to predict on thousands of rows at once.
+
+5. TROUBLESHOOTING
+   - "H2O Server Error": Install Java (JDK 8 or 11 recommended).
+   - "Module not found": Run 'pip install -r requirements.txt' manually.
 """
-        if model_type == "h2o":
-            code += f"""
+        with open(os.path.join(folder, "README.txt"), "w") as f: f.write(text)
+
+    def _write_report(self, state, path):
+        with open(path, "w", encoding='utf-8') as f:
+            f.write(f"JOB ID: {state.get('job_id')}\n")
+            f.write(f"MODEL: {state.get('best_model_id')}\n")
+
+    def _generate_robust_app_code(self, model_filename, model_type, schema):
+        """
+        Generates a 100% valid Streamlit app using a deterministic template.
+        Solves the 'H2OAutoML' import error and 'Magic Number' zip error.
+        """
+        
+        # 1. Input Widgets Code
+        inputs_code = ""
+        for col, info in schema.items():
+            if info['type'] == 'number':
+                inputs_code += f"    {col} = st.sidebar.number_input('{col}', value={info['default']})\n"
+            elif info['options']:
+                safe_opts = [str(x) for x in info['options']]
+                inputs_code += f"    {col} = st.sidebar.selectbox('{col}', {safe_opts})\n"
+            else:
+                inputs_code += f"    {col} = st.sidebar.text_input('{col}', value='{info['default']}')\n"
+            inputs_code += f"    input_data['{col}'] = {col}\n"
+
+        # 2. H2O Loader Logic (The Fix)
+        if model_type == 'h2o':
+            loader_logic = f"""
 import h2o
 @st.cache_resource
-def load_model():
-    try: h2o.init(verbose=False)
-    except: st.error("Java Required!"); st.stop()
-    path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "{model_filename}")
-    return h2o.import_mojo(path) if path.endswith(".zip") else h2o.load_model(path)
+def load_engine():
+    try:
+        h2o.init(nthreads=-1, max_mem_size="2G")
+    except:
+        st.error("H2O failed to start. Please install Java.")
+        return None
+    
+    path = os.path.join(os.getcwd(), "{model_filename}")
+    
+    # CRITICAL FIX: Distinguish between MOJO (zip) and BINARY
+    if path.endswith(".zip"):
+        return h2o.import_mojo(path)
+    else:
+        return h2o.load_model(path)
+
+def make_prediction(model, df):
+    hf = h2o.H2OFrame(df)
+    preds = model.predict(hf).as_data_frame()
+    return preds
 """
         else:
-            code += f"""
+            # Sklearn Loader
+            loader_logic = f"""
 import joblib
 @st.cache_resource
-def load_model(): return joblib.load(os.path.join(os.path.dirname(os.path.abspath(__file__)), "{model_filename}"))
-"""
-        code += """
-try: model = load_model(); st.sidebar.success("Model Active")
-except Exception as e: st.error(str(e)); st.stop()
+def load_engine():
+    path = os.path.join(os.getcwd(), "{model_filename}")
+    return joblib.load(path)
 
-tab1, tab2 = st.tabs(["📂 Batch Upload", "✍️ Single Entry"])
+def make_prediction(model, df):
+    return model.predict(df)
+"""
+
+        # 3. Full App Template
+        return f"""
+import streamlit as st
+import pandas as pd
+import numpy as np
+import os
+
+st.set_page_config(page_title="AI Model Deployment", layout="wide")
+st.title("🤖 AI Prediction System")
+
+# --- MODEL ENGINE ---
+{loader_logic}
+
+model = load_engine()
+if not model:
+    st.stop()
+
+# --- TABS ---
+tab1, tab2 = st.tabs(["⚡ Single Prediction", "📂 Batch Prediction"])
+
+# --- TAB 1: SIDEBAR INPUTS ---
 with tab1:
-    up = st.file_uploader("Upload CSV", type="csv")
-    if up:
+    st.sidebar.header("Feature Inputs")
+    input_data = {{}}
+{inputs_code}
+    
+    st.subheader("Input Data")
+    df_single = pd.DataFrame([input_data])
+    st.dataframe(df_single)
+    
+    if st.button("Predict Single", type="primary"):
         try:
-            df = pd.read_csv(up)
-            st.dataframe(df.head())
-            if st.button("Predict Batch"):
-                """
-        if model_type == "h2o": code += "preds = model.predict(h2o.H2OFrame(df)).as_data_frame()"
-        else: code += "preds = pd.DataFrame(model.predict(df), columns=['Prediction'])"
-        code += """
-                st.dataframe(pd.concat([df, preds], axis=1))
-        except Exception as e: st.error(str(e))
+            res = make_prediction(model, df_single)
+            st.success("Prediction Complete")
+            st.write(res)
+        except Exception as e:
+            st.error(f"Error: {{e}}")
 
+# --- TAB 2: BATCH CSV ---
 with tab2:
-    st.header("Manual Input")
-"""
-        code += indented_ai_code
-        code += """
-    if 'input_df' in locals():
-        st.write("Preview:")
-        st.dataframe(input_df)
-        if st.button("Predict Single"):
+    st.header("Batch Processing")
+    uploaded_file = st.file_uploader("Upload CSV", type=["csv"])
+    
+    if uploaded_file:
+        df_batch = pd.read_csv(uploaded_file)
+        st.write(f"Loaded {{len(df_batch)}} rows.")
+        
+        if st.button("Run Batch Prediction"):
             try:
-                """
-        if model_type == "h2o": code += "res = model.predict(h2o.H2OFrame(input_df)).as_data_frame().iloc[0,0]"
-        else: code += "res = model.predict(input_df)[0]"
-        code += """
-                st.metric("Prediction", str(res))
-            except Exception as e: st.error(str(e))
+                with st.spinner("Processing..."):
+                    preds = make_prediction(model, df_batch)
+                    
+                    # Merge results if possible
+                    if isinstance(preds, pd.DataFrame):
+                        final_df = pd.concat([df_batch.reset_index(drop=True), preds.reset_index(drop=True)], axis=1)
+                    else:
+                        df_batch['Prediction'] = preds
+                        final_df = df_batch
+                        
+                    st.dataframe(final_df.head())
+                    
+                    # Download
+                    csv = final_df.to_csv(index=False).encode('utf-8')
+                    st.download_button("Download Results", data=csv, file_name="predictions.csv", mime="text/csv")
+            except Exception as e:
+                st.error(f"Batch Error: {{e}}")
 """
-        return code

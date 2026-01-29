@@ -59,10 +59,24 @@ class DataAgent:
         )
         self.kv_chain = self.kv_extraction_prompt | llm_powerful_api | JsonOutputParser()
 
-        self.gen_prompt = ChatPromptTemplate.from_template(
-            "Generate a synthetic dataset for: {description}. Return ONLY a valid JSON list of objects."
+        # 2. GENERATION PROMPT (Updated with Live Search Context)
+        self.gen_search_prompt = ChatPromptTemplate.from_template(
+            """You are an Expert Data Generator.
+            The user wants a dataset about: "{description}"
+            
+            REAL-WORLD CONTEXT (Recently Searched):
+            {context}
+            
+            TASK:
+            Generate a realistic, structured dataset (JSON list) based on the description and the provided context.
+            - Use REAL names, prices, dates, or specs found in the context.
+            - If context is thin, infer realistic values based on the data profile.
+            - Generate at least 20-30 rows to allow for analysis.
+            
+            Return ONLY valid JSON: `[ {{"Column": Value, ...}}, ... ]`
+            """
         )
-        self.gen_chain = self.gen_prompt | llm_powerful_api | JsonOutputParser()
+        self.gen_chain = self.gen_search_prompt | llm_powerful_api | JsonOutputParser()
 
         self.hf_api = HfApi()
         
@@ -77,7 +91,7 @@ class DataAgent:
                 self.kaggle_api.authenticate()
             except: pass
 
-        try: self.web_search = TavilySearchResults()
+        try: self.web_search = TavilySearchResults(max_results=3)
         except: self.web_search = None
 
     def _load_structured_file(self, filepath, ext):
@@ -303,9 +317,28 @@ class DataAgent:
         elif mode == "search":
             state['search_results'] = self.search_online(inp)
             return state
+
         elif mode == "generate":
-            json_data = self.gen_chain.invoke({"description": inp})
+            print(f"   [Agent 1] Generating data with live search context...")
+            search_context = "No online info available."
+            
+            # --- USE TAVILY FOR LIVE CONTEXT ---
+            if self.web_search:
+                try:
+                    raw_results = self.web_search.invoke(inp)
+                    # Aggregate snippets
+                    search_context = "\n".join([f"- {r['content']}" for r in raw_results])
+                    print(f"   [Agent 1] Retrieved context length: {len(search_context)}")
+                except Exception as e:
+                    print(f"   [Warning] Web search failed: {e}")
+
+            # Generate Data using Context
+            json_data = self.gen_chain.invoke({
+                "description": inp, 
+                "context": search_context[:3000] # Limit context size
+            })
             df = pd.DataFrame(json_data)
+
         elif mode == "download_selected":
              dl_dir = os.path.join(state.get('results_dir', '.'), "downloaded_data")
              df = self.download_selected(inp['source'], inp['id'], dl_dir)
@@ -337,14 +370,25 @@ class DataAgent:
             df = df.sample(frac=1, random_state=42).reset_index(drop=True)
 
             print(f"   Data Loaded. Shape: {df.shape}")
-            state['raw_df'] = df
             
-            # 6. UPDATE STATE
+            # --- PROFESSIONAL STATE UPDATE ---
+            state['raw_df'] = df.copy() # Keep backup
+            state['current_data'] = df  # Main Unified Stream
+            
             try:
                 state['data_preview_html'] = df.head(50).to_html(classes='table', border=0, index=False)
             except: 
                 state['data_preview_html'] = "<p>Preview unavailable</p>"
                 
             state['data_shape'] = str(df.shape)
+            
+            # --- STANDALONE OUTPUT FIX ---
+            # Ensure the UI shows a success message if the pipeline is stopped here
+            state['final_message'] = (
+                f"✅ Data Acquisition Complete.\n"
+                f"Shape: {df.shape}\n"
+                f"Columns: {', '.join(df.columns[:5])}..."
+            )
+            # -----------------------------
             
         return state

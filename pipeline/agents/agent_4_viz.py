@@ -1,203 +1,227 @@
-import pandas as pd
-import seaborn as sns
 import matplotlib
-# Force non-interactive backend for server environments
-matplotlib.use('Agg') 
+matplotlib.use('Agg') # Force headless mode
 import matplotlib.pyplot as plt
+import seaborn as sns
+import pandas as pd
 import os
 import uuid
 import numpy as np
+import difflib
+import zipfile
+import json
+import re
 from core.llm_services import llm_powerful_api
 from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.output_parsers import JsonOutputParser
+from langchain_core.output_parsers import StrOutputParser
 
 class VizAgent:
     def __init__(self):
-        # The AI Visualization Expert Prompt
+        # We use StrOutputParser now to get raw text and manually clean it (More robust than JsonOutputParser)
         self.strategy_prompt = ChatPromptTemplate.from_template(
-            """You are a Lead Data Visualization Expert.
-            Analyze the dataset stats and User Requests to prescribe the best 3-6 charts.
-
+            """You are a Lead Data Visualization Architect.
+            
             DATA PROFILE:
             - Rows: {rows}, Columns: {cols}
             - Numerical Cols: {num_cols}
             - Categorical Cols: {cat_cols}
-            - Correlations (Top 5): {corr_info}
-            - User Command: "{user_request}" (PRIORITIZE THIS)
-
-            CAPABILITIES:
-            - 'hist': Histogram (Distribution)
-            - 'box': Boxplot (Outliers/Comparison)
-            - 'scatter': Scatter Plot (Relationship between 2 numbers)
-            - 'bar': Bar Chart (Categorical Counts or Aggregates)
-            - 'heatmap': Correlation Matrix
-            - 'pair': Pair Plot (Multivariate overview)
-            - 'violin': Violin Plot (Distribution + Box)
-
-            OUTPUT JSON RULES:
-            - Return a list of objects in a "charts" key.
-            - Each object must have: "type", "x", "y" (optional), "hue" (optional), "title".
-            - If User Command is empty, suggest the most insightful charts automatically.
             
-            EXAMPLE OUTPUT:
+            USER COMMAND: "{user_request}"
+            (CRITICAL: You MUST follow this command if provided. If the user asks for a specific chart, generate ONLY that.)
+            
+            PREFERRED TYPE: "{pref_type}"
+            
+            TASK:
+            Return a JSON object with a key "charts" containing a list of chart definitions.
+            
+            FORMAT:
             {{
                 "charts": [
-                    {{"type": "hist", "x": "Age", "hue": "Survived", "title": "Age Distribution by Survival"}},
-                    {{"type": "heatmap", "title": "Correlation Matrix"}}
+                    {{
+                        "type": "scatterplot",
+                        "x": "ColumnName",
+                        "y": "ColumnName",
+                        "hue": "OptionalColumn", 
+                        "title": "Chart Title"
+                    }}
                 ]
             }}
+            
+            VALID TYPES: 
+            scatterplot, lineplot, histplot, kdeplot, barplot, countplot, boxplot, violinplot, heatmap, pairplot, jointplot, lmplot
+            
+            Return ONLY VALID JSON. No markdown formatting.
             """
         )
-        self.llm_chain = self.strategy_prompt | llm_powerful_api | JsonOutputParser()
+        self.llm_chain = self.strategy_prompt | llm_powerful_api | StrOutputParser()
+
+    def _fuzzy_match_col(self, col_name, all_columns):
+        if not col_name: return None
+        if col_name in all_columns: return col_name
+        # Find closest match
+        matches = difflib.get_close_matches(col_name, all_columns, n=1, cutoff=0.4)
+        return matches[0] if matches else None
+
+    def _clean_and_parse_json(self, raw_text):
+        """Robustly extracts JSON from LLM response, handling Markdown blocks."""
+        try:
+            # Remove Markdown fences
+            text = raw_text.replace("```json", "").replace("```", "").strip()
+            return json.loads(text)
+        except:
+            # Try finding the first { and last }
+            try:
+                start = text.find("{")
+                end = text.rfind("}") + 1
+                if start != -1 and end != -1:
+                    return json.loads(text[start:end])
+            except:
+                pass
+        return None
 
     def run(self, state):
-        print("-> Agent 4: Intelligent Visualization...")
+        print("-> Agent 4: Visualization (Seaborn Ultra)...")
         
-        # 1. Get Data Safely
-        df = state.get('cleaned_df')
-        if df is None:
-            df = state.get('raw_df')
-            
-        if df is None: 
-            raise ValueError("No data found for visualization.")
+        # 1. Get Data
+        df = state.get('current_data')
+        if df is None: df = state.get('featured_df')
+        if df is None: df = state.get('cleaned_df')
+        if df is None: raise ValueError("No data found to visualize.")
         
-        # 2. Analyze Column Types
-        num_cols = df.select_dtypes(include=['number']).columns.tolist()
-        cat_cols = df.select_dtypes(include=['object', 'category', 'bool']).columns.tolist()
-        
-        # Calculate Correlation only if we have enough numeric cols
-        corr_info = "N/A"
-        if len(num_cols) > 1:
-            try:
-                corr_matrix = df[num_cols].corr().abs()
-                # Extract top correlations
-                pairs = (corr_matrix.where(np.triu(np.ones(corr_matrix.shape), k=1).astype(bool))
-                         .stack().sort_values(ascending=False).head(5))
-                corr_info = str(pairs.to_dict())
-            except: pass
+        # 2. Setup
+        save_dir = os.path.join(state['results_dir'], "charts")
+        os.makedirs(save_dir, exist_ok=True)
+        # Clean old charts
+        for f in os.listdir(save_dir):
+            if f.endswith('.png'): os.remove(os.path.join(save_dir, f))
 
-        # 3. Get User Config
         config = state.get('node_configs', {}).get('agent_4_viz', {})
         user_request = config.get('user_request', '')
-
-        # 4. Determine Strategy (LLM or Fallback)
-        plan = {"charts": []}
         
-        # FALLBACK: If no numeric columns exist, force Categorical plots
-        if not num_cols and cat_cols:
-            print("   [Agent 4] Warning: No numeric columns found. Creating categorical count plots.")
-            # Plot top 3 categorical columns
-            for col in cat_cols[:3]:
-                plan['charts'].append({
-                    "type": "bar", 
-                    "x": col, 
-                    "title": f"Distribution of {col}"
-                })
-        else:
-            # Standard LLM Planning
-            stats = {
+        # 3. Downsample for Speed
+        plot_df = df.sample(n=2000, random_state=42) if len(df) > 2000 else df.copy()
+        
+        # 4. Plan (LLM vs Heuristic)
+        num_cols = plot_df.select_dtypes(include=np.number).columns.tolist()
+        cat_cols = plot_df.select_dtypes(exclude=np.number).columns.tolist()
+        
+        plan = None
+        
+        # A. Try LLM Planning
+        try:
+            print(f"   [Viz] Processing User Request: '{user_request}'")
+            raw_response = self.llm_chain.invoke({
                 "rows": len(df), "cols": len(df.columns),
-                "num_cols": num_cols[:10], "cat_cols": cat_cols[:10],
-                "corr_info": corr_info,
-                "user_request": user_request
-            }
+                "num_cols": num_cols[:30], "cat_cols": cat_cols[:30],
+                "user_request": user_request,
+                "pref_type": config.get('pref_type', 'Auto')
+            })
             
-            print(f"   Analyzing with User Request: '{user_request}'")
-            try:
-                plan = self.llm_chain.invoke(stats)
-                print(f"   LLM Planned {len(plan.get('charts', []))} charts.")
-            except Exception as e:
-                print(f"   LLM Error: {e}. Reverting to defaults.")
-                # Basic default if LLM fails
-                if num_cols:
-                    plan['charts'].append({"type": "hist", "x": num_cols[0], "title": "Distribution"})
+            plan = self._clean_and_parse_json(raw_response)
+            if plan: print(f"   [Viz] LLM Plan: {len(plan.get('charts', []))} charts generated.")
+            
+        except Exception as e:
+            print(f"   [Viz] LLM Planning Failed: {e}")
+
+        # B. Fallback Heuristics (If LLM fails or returns empty)
+        if not plan or not plan.get('charts'):
+            print("   [Viz] Using Fallback Logic.")
+            charts = []
+            
+            # Simple Keyword Matching from User Request
+            req_lower = user_request.lower()
+            
+            if 'corr' in req_lower or 'heatmap' in req_lower:
+                charts.append({"type": "heatmap", "title": "Correlation Heatmap"})
+            elif 'pair' in req_lower:
+                charts.append({"type": "pairplot", "hue": cat_cols[0] if cat_cols else None, "title": "Pair Plot"})
+            elif 'scatter' in req_lower and len(num_cols) >= 2:
+                charts.append({"type": "scatterplot", "x": num_cols[0], "y": num_cols[1], "title": f"Scatter: {num_cols[0]} vs {num_cols[1]}"})
+            else:
+                # Default Default
+                for c in num_cols[:3]:
+                    charts.append({"type": "histplot", "x": c, "title": f"Distribution of {c}"})
                 if cat_cols:
-                    plan['charts'].append({"type": "bar", "x": cat_cols[0], "title": "Counts"})
-
-        # 5. Prepare Directory
-        save_dir = os.path.join(state['results_dir'], "charts")
-        if not os.path.exists(save_dir):
-            os.makedirs(save_dir)
-        else:
-            # Clean old charts
-            for f in os.listdir(save_dir):
-                if f.endswith('.png'): os.remove(os.path.join(save_dir, f))
+                    charts.append({"type": "barplot", "x": cat_cols[0], "y": num_cols[0] if num_cols else None, "title": f"{cat_cols[0]} Counts"})
             
-        # 6. Generate Charts
-        sns.set_theme(style="darkgrid")
-        plt.rcParams.update({'figure.max_open_warning': 0})
-        
+            plan = {"charts": charts}
+
+        # 5. Render Engine
         img_paths = []
-        charts_list = plan.get('charts', [])
-        if not isinstance(charts_list, list): charts_list = []
-
-        for i, chart in enumerate(charts_list):
+        sns.set_theme(style="whitegrid", context="notebook")
+        
+        for chart in plan.get('charts', []):
             try:
-                plt.figure(figsize=(10, 6))
-                c_type = chart.get('type')
-                x = chart.get('x')
-                y = chart.get('y')
-                hue = chart.get('hue')
-                title = chart.get('title', f"Chart {i+1}")
+                plt.close('all')
+                
+                # Figure-Level vs Axes-Level Handling
+                kind = chart.get('type', 'histplot').lower()
+                
+                # Determine columns
+                x = self._fuzzy_match_col(chart.get('x'), plot_df.columns)
+                y = self._fuzzy_match_col(chart.get('y'), plot_df.columns)
+                hue = self._fuzzy_match_col(chart.get('hue'), plot_df.columns)
+                
+                # Logic Switch
+                if kind == 'heatmap':
+                    plt.figure(figsize=(10, 8))
+                    corr = plot_df.select_dtypes(include=np.number).iloc[:, :15].corr()
+                    sns.heatmap(corr, annot=True, cmap='coolwarm', fmt=".2f")
+                    plt.title("Correlation Matrix")
+                    
+                elif kind == 'pairplot':
+                    # Pairplot creates its own figure
+                    g = sns.pairplot(plot_df, hue=hue, vars=num_cols[:5])
+                    
+                elif kind == 'jointplot' and x and y:
+                    g = sns.jointplot(data=plot_df, x=x, y=y, hue=hue, kind='reg')
+                    
+                elif kind == 'lmplot' and x and y:
+                    g = sns.lmplot(data=plot_df, x=x, y=y, hue=hue)
+                    
+                elif hasattr(sns, kind):
+                    # Standard Plots (Axes Level)
+                    plt.figure(figsize=(10, 6))
+                    k = {"data": plot_df}
+                    if x: k['x'] = x
+                    if y: k['y'] = y
+                    if hue and plot_df[hue].nunique() < 10: k['hue'] = hue # Limit hue to low cardinality
+                    
+                    getattr(sns, kind)(**k)
+                    
+                    plt.title(chart.get('title', f"{kind} of {x}"))
+                    plt.xticks(rotation=45, ha='right')
+                    plt.tight_layout()
+                else:
+                    print(f"   [Viz] Unknown chart type: {kind}")
+                    continue
 
-                # Validation: Ensure columns actually exist
-                if x and x not in df.columns: x = None
-                if y and y not in df.columns: y = None
-                if hue and hue not in df.columns: hue = None
-
-                # Plot Logic
-                if c_type == 'hist' and x:
-                    sns.histplot(data=df, x=x, hue=hue, kde=True, multiple="stack")
+                # Save
+                fname = f"chart_{uuid.uuid4().hex[:6]}.png"
+                save_path = os.path.join(save_dir, fname)
                 
-                elif c_type == 'box' and x:
-                    if y: sns.boxplot(data=df, x=x, y=y, hue=hue) # Bivariate
-                    else: sns.boxplot(data=df, x=x, hue=hue)      # Univariate
-                
-                elif c_type == 'bar' and x:
-                    # If 'y' is missing, countplot (counts). If 'y' exists, barplot (agg mean).
-                    if y: sns.barplot(data=df, x=x, y=y, hue=hue)
-                    else: sns.countplot(data=df, x=x, hue=hue)
-                
-                elif c_type == 'scatter' and x and y:
-                    sns.scatterplot(data=df, x=x, y=y, hue=hue)
-                
-                elif c_type == 'violin' and x:
-                    sns.violinplot(data=df, x=x, y=y, hue=hue)
-                
-                elif c_type == 'heatmap': 
-                    # Only correlate numeric columns
-                    num_df = df.select_dtypes(include=['number'])
-                    if not num_df.empty:
-                        sns.heatmap(num_df.corr(), annot=True, cmap='coolwarm', fmt=".2f")
-                
-                elif c_type == 'pair':
-                    # Pairplot handles its own figure management
-                    plt.close()
-                    vars_to_plot = [c for c in num_cols[:5]] # Limit to 5 vars for speed
-                    g = sns.pairplot(df, hue=hue, vars=vars_to_plot)
-                    fname = f"chart_{uuid.uuid4().hex[:8]}.png"
-                    path = os.path.join(save_dir, fname)
-                    g.savefig(path)
-                    img_paths.append(f"/results/charts/{fname}")
-                    continue # Skip generic save
-
-                # Finalize Generic Plot
-                plt.title(title)
-                plt.tight_layout()
-                
-                fname = f"chart_{uuid.uuid4().hex[:8]}.png"
-                path = os.path.join(save_dir, fname)
-                plt.savefig(path)
-                plt.close()
-                
+                # If we used a Figure-level plot (g), allow standard save to catch current figure
+                try:
+                    plt.savefig(save_path, bbox_inches='tight')
+                except:
+                    # Fallback for complex Seaborn grids
+                    plt.gcf().savefig(save_path)
+                    
                 img_paths.append(f"/results/charts/{fname}")
-                print(f"      Generated: {title}")
-
+                print(f"      Generated: {kind}")
+                
             except Exception as e:
-                print(f"      Failed to plot chart {i}: {e}")
-                plt.close()
+                print(f"      [Viz Error] Failed to render {chart.get('type')}: {e}")
 
         state['chart_images'] = img_paths
         
-        # We DO NOT zip here. Zipping happens on demand in app/routes.py.
+        # 6. Bundle for Download (Standalone Mode)
+        if img_paths:
+            zip_path = os.path.join(state['results_dir'], "charts_bundle.zip")
+            with zipfile.ZipFile(zip_path, 'w') as zf:
+                for img_url in img_paths:
+                    fname = os.path.basename(img_url)
+                    zf.write(os.path.join(save_dir, fname), fname)
+            state['dl_charts'] = "/api/download/charts.zip"
+
+        state['final_message'] = f"✅ Visualization Complete.\nGenerated {len(img_paths)} charts based on request: '{user_request}'"
         return state

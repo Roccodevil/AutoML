@@ -1,11 +1,12 @@
 import os
 import h2o
-from typing import TypedDict, Dict, Any, List
-from langgraph.graph import StateGraph, END
 import pandas as pd
+import traceback
+from typing import TypedDict, Dict, Any, List, Optional
+from langgraph.graph import StateGraph, END
 from app import mongo
 
-# Import agents
+# --- IMPORT AGENTS ---
 from pipeline.agents.agent_1_data import DataAgent
 from pipeline.agents.agent_2_analysis import AnalysisAgent
 from pipeline.agents.agent_3_preprocess import PreprocessAgent
@@ -19,39 +20,41 @@ from pipeline.agents.agent_8_export import ExportAgent
 class OptunaAgentPlaceholder:
     def run(self, state): return state
 
+# --- STATE DEFINITION ---
 class AgentState(TypedDict):
+    job_id: str
     project_id: str
+    results_dir: str
     acquisition_mode: str
     acquisition_input: Any
     problem_description: str
-    results_dir: str
-    final_message: str
     node_configs: Dict[str, Any]
-    data_preview_html: str
+    current_data: Optional[pd.DataFrame] 
     data_shape: str
-    raw_df: pd.DataFrame
+    data_preview_html: str
     analysis: Dict[str, Any]
-    cleaned_df: pd.DataFrame
-    chart_images: List[Any]
-    featured_df: pd.DataFrame
-    X_train: pd.DataFrame
-    X_test: pd.DataFrame
-    y_train: pd.Series
-    y_test: pd.Series
+    chart_images: List[str]
+    X_train: Optional[pd.DataFrame]
+    X_test: Optional[pd.DataFrame]
+    y_train: Optional[pd.Series]
+    y_test: Optional[pd.Series]
     best_model: Any
     best_model_id: str
-    final_model_path: str
-    leaderboard: Any
     leaderboard_html: str
-    report_content: str
     search_results: List[Dict[str, Any]]
     suggest_generate: bool
-    charts_zip_path: str
-    deployment_zip: str
+    final_message: str
+    report_content: str
     dl_app: str
     dl_charts: str
     dl_model: str
     dl_report: str
+    final_model_path: str
+    charts_zip_path: str
+    deployment_zip: str
+    raw_df: Optional[pd.DataFrame]
+    cleaned_df: Optional[pd.DataFrame]
+    featured_df: Optional[pd.DataFrame]
 
 AGENT_NODE_MAP = {
     "agent_1_data": DataAgent,
@@ -65,17 +68,56 @@ AGENT_NODE_MAP = {
     "agent_8_export": ExportAgent,
 }
 
-def create_agent_node(agent_class):
+# --- PERSISTENCE HELPER ---
+def save_intermediate(state, node_id):
+    try:
+        df = state.get('current_data')
+        results_dir = state.get('results_dir')
+        
+        if results_dir:
+            if df is not None and not df.empty:
+                step_file = f"{node_id}_data.csv"
+                df.to_csv(os.path.join(results_dir, step_file), index=False)
+                
+                # Update 'Active Data' only if this agent modifies data
+                if node_id in ['agent_1_data', 'agent_3_preprocess', 'agent_5_feature']:
+                    active_path = os.path.join(results_dir, "active_data.csv")
+                    df.to_csv(active_path, index=False)
+                    state['data_shape'] = str(df.shape)
+                    try:
+                        state['data_preview_html'] = df.head(50).to_html(classes='table table-striped', border=0, index=False)
+                    except: pass
+            else:
+                print(f"   [System] {node_id} produced no new data. Keeping previous.")
+
+    except Exception as e:
+        print(f"   [System Warning] Snapshot failed: {e}")
+    return state
+
+# --- NODE FACTORY ---
+def create_agent_node(agent_class, node_id, status_callback=None):
     def agent_node(state: AgentState):
         try:
-            print(f"--- EXECUTING {agent_class.__name__} ---")
-            return agent_class().run(state)
+            if status_callback: status_callback(f"START:{node_id}")
+            print(f"--- EXECUTING {node_id} ---")
+            
+            agent_instance = agent_class()
+            new_state = agent_instance.run(state)
+            
+            new_state = save_intermediate(new_state, node_id)
+            
+            if status_callback: status_callback(f"FINISH:{node_id}")
+            return new_state
         except Exception as e:
-            print(f"!!! ERROR IN {agent_class.__name__}: {e}")
+            err_msg = f"Error in {node_id}: {str(e)}"
+            print(f"!!! {err_msg}")
+            if status_callback: status_callback(f"ERROR:{node_id}")
+            state['final_message'] = err_msg
             raise e
     return agent_node
 
-def build_graph(nodes_from_gui: List[Dict], edges_from_gui: List[Dict]):
+# --- GRAPH BUILDER ---
+def build_graph(nodes_from_gui, edges_from_gui, status_callback=None):
     workflow = StateGraph(AgentState)
     entry_point = ""
     added_node_ids = set()
@@ -84,14 +126,12 @@ def build_graph(nodes_from_gui: List[Dict], edges_from_gui: List[Dict]):
         node_type = node['type']
         node_id = node['id']
         if node_type in AGENT_NODE_MAP:
-            workflow.add_node(node_id, create_agent_node(AGENT_NODE_MAP[node_type]))
+            node_func = create_agent_node(AGENT_NODE_MAP[node_type], node_id, status_callback)
+            workflow.add_node(node_id, node_func)
             added_node_ids.add(node_id)
-            if node_type == "agent_1_data":
-                entry_point = node_id
+            if node_type == "agent_1_data": entry_point = node_id
 
-    if not entry_point:
-        raise ValueError("Pipeline Error: No 'Data Acquisition' (Agent 1) node found.")
-        
+    if not entry_point: raise ValueError("No Data Agent (Agent 1) found.")
     workflow.set_entry_point(entry_point)
 
     for edge in edges_from_gui:
@@ -99,11 +139,11 @@ def build_graph(nodes_from_gui: List[Dict], edges_from_gui: List[Dict]):
         target = edge['target']
         if source in added_node_ids and target in added_node_ids:
             if source == entry_point:
-                def decide(state):
+                def decide_next(state):
                     if state.get("search_results") or state.get("suggest_generate"): return "pause"
-                    if "raw_df" in state and not state['raw_df'].empty: return "continue"
+                    if state.get("current_data") is not None: return "continue"
                     return "error"
-                workflow.add_conditional_edges(entry_point, decide, {"pause": END, "continue": target, "error": END})
+                workflow.add_conditional_edges(entry_point, decide_next, {"pause": END, "continue": target, "error": END})
             else:
                 workflow.add_edge(source, target)
 
@@ -114,65 +154,49 @@ def build_graph(nodes_from_gui: List[Dict], edges_from_gui: List[Dict]):
 
     return workflow.compile()
 
-def run_pipeline_from_graph(initial_state: dict, graph_layout: dict, target_node_id=None):
-    # H2O Init
+# --- MAIN RUNNER ---
+def run_pipeline_from_graph(initial_state, graph_layout, target_node_id=None, status_callback=None):
     try:
-        if h2o.connection() is None: h2o.init(nthreads=-1)
+        if h2o.connection() is None: 
+            h2o.init(nthreads=-1, max_mem_size="2G", verbose=False)
     except:
-        try: h2o.init()
-        except: print("Warning: H2O failed to init.")
+        try: h2o.init(nthreads=-1, verbose=False)
+        except: print("Warning: H2O Init Failed.")
 
-    app_graph = build_graph(graph_layout['nodes'], graph_layout['edges'])
-    if not app_graph: raise ValueError("Invalid Graph")
-
+    app_graph = build_graph(graph_layout['nodes'], graph_layout['edges'], status_callback)
+    
     results_dir = initial_state['results_dir']
     os.makedirs(os.path.join(results_dir, "charts"), exist_ok=True)
     os.makedirs(os.path.join(results_dir, "models"), exist_ok=True)
-    os.makedirs(os.path.join(results_dir, "downloaded_data"), exist_ok=True)
     
-    final_state = {}
+    final_state = initial_state
     
     try:
-        if 'node_configs' not in initial_state: initial_state['node_configs'] = {}
-        
-        print(f"--- Pipeline Started (Target: {target_node_id or 'End'}) ---")
+        if status_callback: status_callback("PIPELINE_START")
         
         for s in app_graph.stream(initial_state):
             step_name = list(s.keys())[0]
-            print(f"--- Finished Step: {step_name} ---")
-            
             final_state = s.get(step_name)
             
-            # Save Active Data for Preview/Download
-            active_df = None
-            if 'featured_df' in final_state: active_df = final_state['featured_df']
-            elif 'cleaned_df' in final_state: active_df = final_state['cleaned_df']
-            elif 'raw_df' in final_state: active_df = final_state['raw_df']
-            
-            if active_df is not None:
-                final_state['data_shape'] = str(active_df.shape)
-                active_path = os.path.join(results_dir, "active_data.csv")
-                active_df.to_csv(active_path, index=False)
-                # Max 50 rows for HTML preview to keep UI fast
-                final_state['data_preview_html'] = active_df.head(50).to_html(classes='table', border=0, index=False)
-
-            # --- STOP LOGIC: If we hit the target node, we exit successfully ---
             if target_node_id and step_name == target_node_id:
-                final_state['final_message'] = f"✅ Run successful up to step: {target_node_id}"
+                if not final_state.get('final_message'):
+                    final_state['final_message'] = f"✅ Run stopped at user target: {target_node_id}"
                 return final_state
 
-            # --- PAUSE LOGIC: For Search/Generate actions ---
             if final_state.get('search_results') or final_state.get('suggest_generate'):
                 return final_state
         
-        # Complete Run Logic
         if 'report_content' in final_state: 
             final_state['final_message'] = final_state['report_content']
-        else: 
-            final_state['final_message'] = f"✅ Pipeline complete!\nModel: {final_state.get('best_model_id', 'N/A')}"
+        elif 'best_model_id' in final_state:
+            final_state['final_message'] = f"✅ Pipeline Completed. Best Model: {final_state['best_model_id']}"
+        elif not final_state.get('final_message'):
+            final_state['final_message'] = "✅ Pipeline Finished Successfully."
              
         return final_state
 
     except Exception as e:
-        print(f"PIPELINE FAILED: {e}")
-        raise e
+        print(f"PIPELINE CRASHED: {e}")
+        traceback.print_exc()
+        final_state['final_message'] = f"Critical Error: {str(e)}"
+        return final_state

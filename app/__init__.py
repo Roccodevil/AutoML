@@ -25,10 +25,13 @@ def create_app():
     mongo.init_app(app)
 
     # Register the main routes/endpoints
-    from app import routes
-    app.register_blueprint(routes.bp)
+    from app.routes import bp as main_bp
+    from app.routes_nlp import nlp_bp
+    
+    app.register_blueprint(main_bp)
+    app.register_blueprint(nlp_bp)
 
-    print("Flask application created successfully with MongoDB.")
+    print("Flask application created successfully.")
     
     # --- NEW: Test the database connection on startup ---
     try:

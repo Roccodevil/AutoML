@@ -1,80 +1,106 @@
 import pandas as pd
+import numpy as np
 from sklearn.model_selection import train_test_split
-from core.llm_services import llm_powerful_api
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.output_parsers import JsonOutputParser
 
 class StagingAgent:
-    def __init__(self):
-        self.chain = (
-            ChatPromptTemplate.from_template(
-                """Suggest a train-test split strategy.
-                Data Shape: {shape}. Target: {target}. Problem Type: {problem}.
-                Return JSON: {{"test_size": 0.2, "stratify": true/false}}"""
-            )
-            | llm_powerful_api | JsonOutputParser()
-        )
-    
     def run(self, state):
-        print("-> Agent 6: Staging data...")
+        print("-> Agent 6: Staging Data (Professional Split)...")
         
-        # 1. Get Data
-        df = state.get('featured_df')
+        # 1. Get Unified Data Stream
+        # Priority: current_data > featured_df > cleaned_df
+        df = state.get('current_data')
+        if df is None: df = state.get('featured_df')
         if df is None: df = state.get('cleaned_df')
-        if df is None: raise ValueError("No data available for staging.")
         
-        target = state['analysis'].get('target_variable')
-        problem_type = state['analysis'].get('problem_type', 'classification').lower()
+        if df is None: 
+            raise ValueError("Agent 6 Error: No data stream available. Please run previous steps.")
+        
+        # 2. Get Analysis Context
+        analysis = state.get('analysis', {})
+        target = analysis.get('target_variable')
+        problem_type = analysis.get('problem_type', 'Classification')
+        
+        # 3. Target Validation
+        if not target:
+             raise ValueError("Agent 6 Error: Target variable is undefined. Run Agent 2 (Analysis) first.")
         
         if target not in df.columns:
-            raise ValueError(f"Target column '{target}' not found in dataset.")
-
-        # --- 2. CRITICAL FIX: Clean Target Variable ---
-        # Remove rows where target is NaN/None to prevent sorting errors
+            raise ValueError(f"CRITICAL: Target '{target}' is missing from the dataset columns: {list(df.columns[:5])}...")
+            
+        # 4. Clean Target (Drop NaNs)
+        # We cannot train on rows where the answer (target) is missing
         initial_len = len(df)
         df = df.dropna(subset=[target])
-        
         if len(df) < initial_len:
             print(f"   [Agent 6] Dropped {initial_len - len(df)} rows with missing target values.")
-        
-        if len(df) == 0:
-            raise ValueError("All rows have missing target values. Cannot train.")
 
-        # Separate X and y
+        if df.empty: 
+            raise ValueError("Dataset is empty after dropping missing targets. Check your data quality.")
+
+        # 5. Separate Features & Target
         X = df.drop(columns=[target])
         y = df[target]
         
-        # 3. Determine Strategy
+        # 6. Determine Split Strategy
         test_size = 0.2
         stratify = None
+        is_time_series = False
         
-        # Stratify only if we have enough samples per class
-        if 'classification' in problem_type:
-            # Check class counts
+        # Check for Time Series (Heuristic: 'Date' in columns or sequential index)
+        # If user explicitly requested time series in config, we'd respect that here.
+        # For now, we assume standard tabular unless sorted index suggests otherwise.
+        
+        if problem_type == 'Classification':
+            # Check class balance for Stratification
             class_counts = y.value_counts()
-            # We can only stratify if every class has at least 2 samples
-            if (class_counts >= 2).all():
-                stratify = y
-                print("   Using Stratified Split (Balanced classes)")
+            min_class = class_counts.min()
+            
+            if min_class < 2:
+                print(f"   [Agent 6] Warning: Rare class detected (count={min_class}). Stratification disabled.")
+                stratify = None
             else:
-                print("   Skipping stratification (some classes have < 2 samples)")
-
-        # 4. Split
+                stratify = y # Enable Stratified Split to maintain class ratios
+                
+        # 7. Perform Split
         try:
-            X_train, X_test, y_train, y_test = train_test_split(
-                X, y, test_size=test_size, stratify=stratify, random_state=42
-            )
+            if is_time_series:
+                # Temporal Split (No Shuffle)
+                print("   [Agent 6] Performing Temporal Split (No Shuffle).")
+                split_idx = int(len(X) * (1 - test_size))
+                X_train, X_test = X.iloc[:split_idx], X.iloc[split_idx:]
+                y_train, y_test = y.iloc[:split_idx], y.iloc[split_idx:]
+            else:
+                # Standard Random Split
+                X_train, X_test, y_train, y_test = train_test_split(
+                    X, y, 
+                    test_size=test_size, 
+                    stratify=stratify, 
+                    random_state=42
+                )
         except ValueError as e:
-            # Fallback if stratification fails (e.g., extremely rare classes)
-            print(f"   Stratification failed ({e}). Falling back to random split.")
+            # Fallback if stratify fails unexpectedly
+            print(f"   [Agent 6] Stratification failed ({e}). Falling back to simple random split.")
             X_train, X_test, y_train, y_test = train_test_split(
                 X, y, test_size=test_size, stratify=None, random_state=42
             )
         
+        # 8. Save State (Pandas Objects for Agent 7)
         state['X_train'] = X_train
         state['X_test'] = X_test
         state['y_train'] = y_train
         state['y_test'] = y_test
         
-        print(f"   Data split complete. Train: {X_train.shape}, Test: {X_test.shape}")
+        print(f"   Split Complete: Train={len(X_train)}, Test={len(X_test)}")
+        
+        # 9. Standalone Output Message
+        split_type = "Temporal" if is_time_series else ("Stratified" if stratify is not None else "Random")
+        
+        state['final_message'] = (
+            f"✅ Data Staging Complete.\n"
+            f"• Strategy: {split_type} Split (80/20)\n"
+            f"• Training Set: {X_train.shape[0]} rows\n"
+            f"• Testing Set: {X_test.shape[0]} rows\n"
+            f"• Features: {X_train.shape[1]} columns"
+        )
+        
         return state
