@@ -1,4 +1,5 @@
-# --- CPU-Only Enforcement for PyTorch (Must be at the top) ---
+# --- CPU-Only Enforcement for PyTorch ---
+# This tells pip to look for CPU wheels first
 --extra-index-url https://download.pytorch.org/whl/cpu
 
 # Flask Web Server & Database
@@ -19,6 +20,7 @@ h2o
 optuna
 
 # NLP & Deep Learning (CPU Optimized)
+# torch will install the CPU version because of the index-url above
 torch
 transformers
 nltk

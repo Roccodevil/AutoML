@@ -15,6 +15,13 @@ from datasets import load_dataset
 from langchain_community.tools.tavily_search import TavilySearchResults
 
 # --- SAFE IMPORT: Kaggle ---
+# --- SEARCH & DATASETS ---
+try:
+    from huggingface_hub import HfApi
+    from datasets import load_dataset
+except ImportError:
+    HfApi = None
+
 try: 
     from kaggle.api.kaggle_api_extended import KaggleApi
 except ImportError: 
@@ -314,10 +321,61 @@ class DataAgent:
             elif ext in ['.pdf', '.docx', '.txt']: df = self._extract_from_doc(inp, ext)
             else: raise ValueError(f"Unsupported format: {ext}")
 
-        elif mode == "search":
-            state['search_results'] = self.search_online(inp)
-            return state
+# --- MODE 2: SEARCH (HuggingFace / Kaggle) ---
+        elif mode == 'search':
+            query = inp
+            print(f"   [Agent 1] Online Search for: '{query}'")
+            
+            # A. Hugging Face Search
+            if df is None and HfApi:
+                try:
+                    print("   ...Querying Hugging Face Hub...")
+                    api = HfApi()
+                    # Search for datasets, prioritize CSVs
+                    datasets = list(api.list_datasets(search=query, limit=5, filter="csv"))
+                    
+                    if datasets:
+                        target_ds = datasets[0].id
+                        print(f"   [Agent 1] Found HF Dataset: {target_ds}")
+                        # Load the first split (usually 'train') and convert to Pandas
+                        ds_data = load_dataset(target_ds, split='train')
+                        df = ds_data.to_pandas()
+                    else:
+                        print("   [Agent 1] No CSV datasets found on Hugging Face.")
+                except Exception as e: 
+                    print(f"   [Agent 1] HF Search Error: {e}")
 
+            # B. Kaggle Search (Fallback)
+            if df is None and KaggleApi:
+                try:
+                    print("   ...Querying Kaggle...")
+                    api = KaggleApi()
+                    api.authenticate() # Requires ~/.kaggle/kaggle.json or ENV vars
+                    
+                    # Search and get the first CSV dataset
+                    datasets = api.dataset_list(search=query, file_type='csv')
+                    
+                    if datasets:
+                        target = datasets[0].ref
+                        print(f"   [Agent 1] Downloading Kaggle Dataset: {target}")
+                        
+                        # Download to a temp folder
+                        out_dir = os.path.join(os.getcwd(), "data", "kaggle_temp")
+                        os.makedirs(out_dir, exist_ok=True)
+                        api.dataset_download_files(target, path=out_dir, unzip=True)
+                        
+                        # Find and load the first CSV file
+                        for root, dirs, files in os.walk(out_dir):
+                            for f in files:
+                                if f.endswith(".csv"):
+                                    df = pd.read_csv(os.path.join(root, f))
+                                    break
+                            if df is not None: break
+                except Exception as e: 
+                    print(f"   [Agent 1] Kaggle Error: {e}")
+
+            if df is None:
+                raise ValueError("Online search returned no usable data from HF or Kaggle.")
         elif mode == "generate":
             print(f"   [Agent 1] Generating data with live search context...")
             search_context = "No online info available."
